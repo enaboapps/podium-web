@@ -8,6 +8,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Doc } from '@/convex/_generated/dataModel';
 import { parseFile, splitIntoSentences, joinFullText } from '@/lib/parseFile';
 
+const PREVIEW_CAP = 100;
+
 type Tab = 'talks' | 'sets';
 type CreateMode = 'none' | 'new' | 'set';
 type SegmentMode = 'paragraphs' | 'sentences';
@@ -335,11 +337,16 @@ export default function LibraryPage() {
 
             {/* Segment preview */}
             <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
-              {previewSegments.map((text, i) => (
+              {previewSegments.slice(0, PREVIEW_CAP).map((text, i) => (
                 <div key={i} className="bg-[var(--surface)] rounded-xl px-4 py-3">
                   <p className="text-sm text-[var(--foreground)] leading-relaxed">{text}</p>
                 </div>
               ))}
+              {previewSegments.length > PREVIEW_CAP && (
+                <p className="text-center text-xs text-[var(--muted)] py-2">
+                  Showing first {PREVIEW_CAP} of {previewSegments.length} segments
+                </p>
+              )}
             </div>
           </div>
         </>
