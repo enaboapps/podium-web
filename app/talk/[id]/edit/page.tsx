@@ -24,9 +24,9 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
 
   useEffect(() => {
     if (!talk) return;
-    // Use stored fullText, or reconstruct from segments if not available
     const text = talk.fullText ?? talk.segments.map((s) => s.text).join('\n\n');
     setFullText(text);
+    if (talk.segmentMode) setMode(talk.segmentMode);
   }, [talk]);
 
   const paragraphs = useMemo(() => {
@@ -50,6 +50,7 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
         userId: clerkId,
         fullText: joinFullText(paragraphs),
         segments,
+        segmentMode: mode,
       });
       setDirty(false);
       setSaved(true);

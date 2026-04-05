@@ -39,9 +39,10 @@ export const createWithSegments = mutation({
     title: v.string(),
     segments: v.array(v.object({ id: v.string(), text: v.string() })),
     fullText: v.optional(v.string()),
+    segmentMode: v.optional(v.union(v.literal('paragraphs'), v.literal('sentences'))),
   },
-  handler: async (ctx, { userId, title, segments, fullText }) => {
-    return await ctx.db.insert('talks', { userId, title, segments, fullText });
+  handler: async (ctx, { userId, title, segments, fullText, segmentMode }) => {
+    return await ctx.db.insert('talks', { userId, title, segments, fullText, segmentMode });
   },
 });
 
@@ -51,8 +52,9 @@ export const saveEditedText = mutation({
     userId: v.string(),
     fullText: v.string(),
     segments: v.array(v.object({ id: v.string(), text: v.string() })),
+    segmentMode: v.union(v.literal('paragraphs'), v.literal('sentences')),
   },
-  handler: async (ctx, { id, userId, fullText, segments }) => {
+  handler: async (ctx, { id, userId, fullText, segments, segmentMode }) => {
     const talk = await ctx.db.get(id);
     if (!talk || talk.userId !== userId) throw new Error('Not found');
 
@@ -69,8 +71,8 @@ export const saveEditedText = mutation({
       segments: talk.segments,
     });
 
-    // Update talk with new text and segments
-    await ctx.db.patch(id, { fullText, segments });
+    // Update talk with new text, segments, and mode
+    await ctx.db.patch(id, { fullText, segments, segmentMode });
   },
 });
 

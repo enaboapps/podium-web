@@ -94,6 +94,7 @@ export default function LibraryPage() {
         title: importDraft.title.trim() || 'Untitled',
         segments,
         fullText: importDraft.fullText,
+        segmentMode: importDraft.mode,
       });
       setImportDraft(null);
     } catch {
