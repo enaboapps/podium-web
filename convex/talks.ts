@@ -59,14 +59,8 @@ export const saveEditedText = mutation({
     if (!talk || talk.userId !== userId) throw new Error('Not found');
 
     // Save current state as a version
-    const existingVersions = await ctx.db
-      .query('talkVersions')
-      .withIndex('by_talk', (q) => q.eq('talkId', id))
-      .collect();
-
     await ctx.db.insert('talkVersions', {
       talkId: id,
-      version: existingVersions.length + 1,
       fullText: talk.fullText,
       segmentMode: talk.segmentMode,
       segments: talk.segments,
@@ -91,14 +85,8 @@ export const restoreVersion = mutation({
     if (!version || version.talkId !== talkId) throw new Error('Version not found');
 
     // Snapshot current state as a new version before restoring
-    const existingVersions = await ctx.db
-      .query('talkVersions')
-      .withIndex('by_talk', (q) => q.eq('talkId', talkId))
-      .collect();
-
     await ctx.db.insert('talkVersions', {
       talkId,
-      version: existingVersions.length + 1,
       fullText: talk.fullText,
       segmentMode: talk.segmentMode,
       segments: talk.segments,
