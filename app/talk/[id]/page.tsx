@@ -27,6 +27,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const [cacheLoaded, setCacheLoaded] = useState(0);
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheFailed, setCacheFailed] = useState(false);
+  // True once we know whether network fetching is needed — avoids flash on repeat visits
+  const [cacheChecked, setCacheChecked] = useState(false);
 
   const apiKey = settings?.elevenLabsApiKey;
   const segments = talk?.segments ?? [];
@@ -38,35 +40,66 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     if (!apiKey || segments.length === 0) return;
 
-    let completed = 0;
+    async function prepare() {
+      // Phase 1: read everything from IDB in parallel
+      const idbResults = await Promise.all(
+        segments.map(async (seg, i) => ({
+          i,
+          seg,
+          key: `${id}:${seg.text}`,
+          blob: await getCachedAudio(`${id}:${seg.text}`),
+        }))
+      );
 
-    segments.forEach(async (seg, i) => {
-      const key = `${id}:${seg.text}`;
-      try {
-        let blob = await getCachedAudio(key);
-        if (!blob) {
-          const res = await fetch(TTS_URL, {
-            method: 'POST',
-            headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: seg.text,
-              model_id: 'eleven_flash_v2_5',
-              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-            }),
-          });
-          if (!res.ok) throw new Error('TTS failed');
-          blob = await res.blob();
-          await setCachedAudio(key, blob);
-        }
-        audioUrls.current.set(i, URL.createObjectURL(blob));
-      } catch {
-        setCacheFailed(true);
-      } finally {
-        completed++;
-        setCacheLoaded(completed);
-        if (completed === segments.length) setCacheReady(true);
+      const hits = idbResults.filter((r) => r.blob);
+      const misses = idbResults.filter((r) => !r.blob);
+
+      // Load cached blobs immediately
+      hits.forEach(({ i, blob }) => {
+        audioUrls.current.set(i, URL.createObjectURL(blob!));
+      });
+
+      // If everything was cached, we're done — no loading screen needed
+      if (misses.length === 0) {
+        setCacheLoaded(segments.length);
+        setCacheReady(true);
+        setCacheChecked(true);
+        return;
       }
-    });
+
+      // Some segments need network — show loading screen
+      setCacheLoaded(hits.length);
+      setCacheChecked(true);
+
+      let completed = hits.length;
+      await Promise.all(
+        misses.map(async ({ i, key, seg }) => {
+          try {
+            const res = await fetch(TTS_URL, {
+              method: 'POST',
+              headers: { 'xi-api-key': apiKey!, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: seg.text,
+                model_id: 'eleven_flash_v2_5',
+                voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+              }),
+            });
+            if (!res.ok) throw new Error('TTS failed');
+            const blob = await res.blob();
+            await setCachedAudio(key, blob);
+            audioUrls.current.set(i, URL.createObjectURL(blob));
+          } catch {
+            setCacheFailed(true);
+          } finally {
+            completed++;
+            setCacheLoaded(completed);
+            if (completed === segments.length) setCacheReady(true);
+          }
+        })
+      );
+    }
+
+    prepare();
 
     return () => {
       audioUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -148,8 +181,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     );
   }
 
-  // Loading screen while pre-caching
-  if (apiKey && !cacheReady) {
+  // Loading screen — only shown when network fetching is needed (cacheChecked but not ready)
+  if (apiKey && cacheChecked && !cacheReady) {
     const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
     return (
       <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
