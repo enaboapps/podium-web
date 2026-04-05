@@ -1,10 +1,13 @@
 'use client';
 
-import { use, useState, useRef } from 'react';
+import { use, useState, useRef, useEffect } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { getCachedAudio, setCachedAudio } from '@/lib/audioStore';
+
+const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -19,11 +22,58 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Audio cache
+  const audioUrls = useRef<Map<number, string>>(new Map());
+  const [cacheLoaded, setCacheLoaded] = useState(0);
+  const [cacheReady, setCacheReady] = useState(false);
+  const [cacheFailed, setCacheFailed] = useState(false);
+
   const apiKey = settings?.elevenLabsApiKey;
   const segments = talk?.segments ?? [];
   const current = segments[index];
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
+
+  // Pre-cache all segments into IndexedDB
+  useEffect(() => {
+    if (!apiKey || segments.length === 0) return;
+
+    let completed = 0;
+
+    segments.forEach(async (seg, i) => {
+      const key = `${id}:${seg.text}`;
+      try {
+        let blob = await getCachedAudio(key);
+        if (!blob) {
+          const res = await fetch(TTS_URL, {
+            method: 'POST',
+            headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: seg.text,
+              model_id: 'eleven_flash_v2_5',
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+          });
+          if (!res.ok) throw new Error('TTS failed');
+          blob = await res.blob();
+          await setCachedAudio(key, blob);
+        }
+        audioUrls.current.set(i, URL.createObjectURL(blob));
+      } catch {
+        setCacheFailed(true);
+      } finally {
+        completed++;
+        setCacheLoaded(completed);
+        if (completed === segments.length) setCacheReady(true);
+      }
+    });
+
+    return () => {
+      audioUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      audioUrls.current.clear();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, id, segments.length]);
 
   function handleTap() {
     if (isLocked) return;
@@ -31,7 +81,6 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       if (!isLast) doAdvanceAndSpeak();
       return;
     }
-    // idle — speak
     doSpeak();
   }
 
@@ -51,43 +100,22 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     audioRef.current = null;
     const nextIndex = index + 1;
     setIndex(nextIndex);
-    // speak the next segment immediately
     speakAt(nextIndex);
   }
 
   async function speakAt(i: number) {
-    const segment = segments[i];
-    if (!apiKey || !segment) return;
+    const url = audioUrls.current.get(i);
+    if (!url) { setSpeakState('idle'); return; }
 
     setSpeakState('loading');
 
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    audio.onended = () => setSpeakState('spoken');
+    audio.onerror = () => setSpeakState('idle');
+
     try {
-      const response = await fetch(
-        'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM',
-        {
-          method: 'POST',
-          headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: segment.text,
-            model_id: 'eleven_flash_v2_5',
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-          }),
-        }
-      );
-
-      if (!response.ok) throw new Error('TTS failed');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setSpeakState('spoken');
-      };
-      audio.onerror = () => setSpeakState('idle');
-
       setSpeakState('speaking');
       await audio.play();
     } catch {
@@ -116,6 +144,45 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--background)]">
         <p className="text-[var(--muted)] text-sm">No segments in this talk.</p>
         <a href="/library" className="text-[var(--primary)] text-sm">← Library</a>
+      </div>
+    );
+  }
+
+  // Loading screen while pre-caching
+  if (apiKey && !cacheReady) {
+    const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
+    return (
+      <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
+        <header className="flex items-center justify-between px-5 pt-6 pb-4">
+          <a href="/library" className="text-sm text-[var(--muted)]">← Library</a>
+          <span className="text-xs text-[var(--muted)] truncate mx-4">{talk.title}</span>
+          <div className="w-12" />
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
+          <p className="text-sm text-[var(--muted)]">Preparing audio…</p>
+
+          <div className="w-full max-w-xs">
+            <div className="h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
+                style={{ width: `${progress * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-[var(--muted)] mt-2 text-center">
+              {cacheLoaded} / {segments.length}
+            </p>
+          </div>
+
+          {cacheFailed && (
+            <button
+              onClick={() => setCacheReady(true)}
+              className="text-sm text-[var(--primary)]"
+            >
+              Continue anyway
+            </button>
+          )}
+        </div>
       </div>
     );
   }
