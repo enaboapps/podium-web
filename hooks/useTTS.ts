@@ -8,6 +8,7 @@ export function useTTS(apiKey: string | undefined) {
   const [state, setState] = useState<TTSState>('idle');
   const [activeId, setActiveId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
 
   async function speak(text: string, id: string) {
     if (!apiKey) return;
@@ -46,6 +47,7 @@ export function useTTS(apiKey: string | undefined) {
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
+      urlRef.current = url;
       const audio = new Audio(url);
       audioRef.current = audio;
 
@@ -53,11 +55,14 @@ export function useTTS(apiKey: string | undefined) {
         setState('idle');
         setActiveId(null);
         URL.revokeObjectURL(url);
+        urlRef.current = null;
       };
 
       audio.onerror = () => {
         setState('idle');
         setActiveId(null);
+        URL.revokeObjectURL(url);
+        urlRef.current = null;
       };
 
       setState('playing');
@@ -72,6 +77,10 @@ export function useTTS(apiKey: string | undefined) {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
     }
     setState('idle');
     setActiveId(null);
