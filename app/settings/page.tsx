@@ -5,6 +5,8 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
+const MASKED = '••••••••••••••••';
+
 export default function SettingsPage() {
   const { clerkId } = useCurrentUser();
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
@@ -12,18 +14,25 @@ export default function SettingsPage() {
   const clearApiKey = useMutation(api.users.clearApiKey);
 
   const [keyInput, setKeyInput] = useState('');
+  // Whether the field is showing the masked placeholder for an already-saved key
+  const [masked, setMasked] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (settings?.elevenLabsApiKey) {
-      setKeyInput(settings.elevenLabsApiKey);
+      setKeyInput('');
+      setMasked(true);
+    } else {
+      setMasked(false);
     }
-  }, [settings]);
+  }, [settings?.elevenLabsApiKey]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!clerkId || !keyInput.trim()) return;
     await saveApiKey({ clerkId, elevenLabsApiKey: keyInput.trim() });
+    setKeyInput('');
+    setMasked(true);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -32,6 +41,14 @@ export default function SettingsPage() {
     if (!clerkId) return;
     await clearApiKey({ clerkId });
     setKeyInput('');
+    setMasked(false);
+  }
+
+  function handleFocus() {
+    if (masked) {
+      setMasked(false);
+      setKeyInput('');
+    }
   }
 
   return (
@@ -53,16 +70,20 @@ export default function SettingsPage() {
           </p>
           <form onSubmit={handleSave} className="space-y-3">
             <input
-              type="password"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
+              type={masked ? 'text' : 'password'}
+              value={masked ? MASKED : keyInput}
+              onChange={(e) => { if (!masked) setKeyInput(e.target.value); }}
+              onFocus={handleFocus}
               placeholder="sk_..."
               className="w-full bg-[var(--surface)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-[var(--muted)] outline-none border border-[var(--border)] focus:border-[var(--primary)] font-mono"
             />
+            {masked && (
+              <p className="text-xs text-[var(--muted)]">Key saved. Tap the field to replace it.</p>
+            )}
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={!keyInput.trim()}
+                disabled={masked || !keyInput.trim()}
                 className="flex-1 bg-[var(--primary)] text-white rounded-xl py-3 text-sm font-medium disabled:opacity-40 transition-opacity"
               >
                 {saved ? 'Saved!' : 'Save key'}
