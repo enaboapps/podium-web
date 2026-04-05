@@ -6,7 +6,7 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
-type SpeakState = 'idle' | 'loading' | 'speaking';
+type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
 export default function TalkPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,10 +23,20 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const segments = talk?.segments ?? [];
   const current = segments[index];
   const isLast = index === segments.length - 1;
-  const isSpeaking = speakState === 'speaking' || speakState === 'loading';
+  const isLocked = speakState === 'loading' || speakState === 'speaking';
 
-  async function speak() {
-    if (!apiKey || !current || isSpeaking) return;
+  function handleTap() {
+    if (isLocked) return;
+    if (speakState === 'spoken') {
+      if (!isLast) doAdvance();
+      return;
+    }
+    // idle — speak
+    doSpeak();
+  }
+
+  async function doSpeak() {
+    if (!apiKey || !current) return;
 
     setSpeakState('loading');
 
@@ -53,7 +63,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
 
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        setSpeakState('idle');
+        setSpeakState('spoken');
       };
       audio.onerror = () => setSpeakState('idle');
 
@@ -64,8 +74,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
-  function advance() {
-    if (isSpeaking || isLast) return;
+  function doAdvance() {
     audioRef.current?.pause();
     audioRef.current = null;
     setSpeakState('idle');
@@ -73,7 +82,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   }
 
   function back() {
-    if (isSpeaking || index === 0) return;
+    if (isLocked || index === 0) return;
     audioRef.current?.pause();
     audioRef.current = null;
     setSpeakState('idle');
@@ -103,7 +112,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
         <a
           href="/library"
-          className={`text-sm transition-colors ${isSpeaking ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}
+          className={`text-sm transition-colors ${isLocked ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}
         >
           ← Library
         </a>
@@ -125,34 +134,33 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         />
       </div>
 
-      {/* Main tap area — locked during speech */}
+      {/* Main tap area */}
       <button
-        onClick={speak}
-        disabled={!apiKey || isSpeaking}
-        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full text-left disabled:cursor-default active:opacity-80"
+        onClick={handleTap}
+        disabled={!apiKey || isLocked}
+        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full disabled:cursor-default active:opacity-80"
       >
         <p className="text-2xl leading-relaxed font-medium text-center text-[var(--foreground)]">
           {current.text}
         </p>
 
-        {speakState === 'loading' && (
-          <p className="mt-8 text-sm text-[var(--muted)] animate-pulse">Loading…</p>
-        )}
-        {speakState === 'speaking' && (
-          <p className="mt-8 text-sm text-[var(--primary)]">Speaking…</p>
-        )}
-        {speakState === 'idle' && apiKey && (
-          <p className="mt-8 text-xs text-[var(--muted)]">Tap to speak</p>
-        )}
-        {!apiKey && (
-          <p className="mt-8 text-xs text-[var(--muted)]">Add ElevenLabs key in Settings</p>
-        )}
+        <p className={`mt-8 text-xs transition-colors ${
+          speakState === 'loading' ? 'text-[var(--muted)] animate-pulse' :
+          speakState === 'speaking' ? 'text-[var(--primary)]' :
+          speakState === 'spoken' ? 'text-[var(--muted)]' :
+          'text-[var(--muted)]'
+        }`}>
+          {speakState === 'loading' && 'Loading…'}
+          {speakState === 'speaking' && 'Speaking…'}
+          {speakState === 'spoken' && (isLast ? 'Done' : 'Tap to advance')}
+          {speakState === 'idle' && (apiKey ? 'Tap to speak' : 'Add ElevenLabs key in Settings')}
+        </p>
       </button>
 
-      {/* Nav — fully hidden during speech */}
+      {/* Nav — hidden while locked */}
       <div
         className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
-          isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       >
         <button
@@ -163,18 +171,21 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           ←
         </button>
 
-        {isLast ? (
+        {speakState === 'spoken' && isLast ? (
           <a href="/library" className="text-sm text-[var(--primary)] font-medium">
             Done
           </a>
         ) : (
-          <button
-            onClick={advance}
-            className="w-12 h-12 flex items-center justify-center text-[var(--muted)] text-xl"
-          >
-            →
-          </button>
+          <div className="w-12" />
         )}
+
+        <button
+          onClick={() => speakState === 'spoken' ? doAdvance() : undefined}
+          disabled={isLast || speakState !== 'spoken'}
+          className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
+        >
+          →
+        </button>
       </div>
     </div>
   );
