@@ -27,12 +27,15 @@ export default defineSchema({
     voiceId: v.optional(v.string()),
     /** Raw full text of the talk, joined from all segments */
     fullText: v.optional(v.string()),
+    /** How the text is split into segments */
+    segmentMode: v.optional(v.union(v.literal('paragraphs'), v.literal('sentences'))),
   })
     .index('by_user', ['userId']),
 
   talkVersions: defineTable({
     talkId: v.id('talks'),
     version: v.number(),
+    fullText: v.optional(v.string()),
     segments: v.array(
       v.object({
         id: v.string(),
