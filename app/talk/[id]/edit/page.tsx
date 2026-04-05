@@ -6,6 +6,7 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
+import { clearTalkAudio } from '@/lib/audioStore';
 
 type SegmentMode = 'paragraphs' | 'sentences';
 
@@ -52,6 +53,7 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
         segments,
         segmentMode: mode,
       });
+      await clearTalkAudio(id);
       setDirty(false);
       setSaved(true);
     } finally {

@@ -6,6 +6,7 @@ import { diffWords } from 'diff';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { clearTalkAudio } from '@/lib/audioStore';
 
 type ViewMode = 'preview' | 'diff';
 
@@ -27,6 +28,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
     setRestoring(versionId);
     try {
       await restoreVersion({ talkId: id as Id<'talks'>, versionId, userId: clerkId });
+      await clearTalkAudio(id);
       setRestored(versionId);
     } finally {
       setRestoring(null);
