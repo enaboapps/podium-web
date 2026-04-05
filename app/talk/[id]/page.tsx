@@ -41,7 +41,12 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           ← Library
         </a>
         <h1 className="text-base font-semibold truncate mx-4 flex-1 text-center">{talk.title}</h1>
-        <div className="w-12" />
+        <a
+          href={`/talk/${id}/read`}
+          className="text-sm text-[var(--primary)] font-medium w-12 text-right"
+        >
+          Read
+        </a>
       </header>
 
       {/* No API key banner */}
