@@ -1,0 +1,67 @@
+import { defineSchema, defineTable } from 'convex/server';
+import { v } from 'convex/values';
+
+export default defineSchema({
+  users: defineTable({
+    clerkId: v.string(),
+    name: v.string(),
+    email: v.string(),
+  }).index('by_clerk_id', ['clerkId']),
+
+  talks: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    /** Ordered segments of the script */
+    segments: v.array(
+      v.object({
+        id: v.string(),
+        text: v.string(),
+        /** 0.5–2.0, default 1.0 */
+        tempo: v.optional(v.number()),
+        /** Whether this segment has emphasis */
+        emphasis: v.optional(v.boolean()),
+      })
+    ),
+    /** ElevenLabs voice ID */
+    voiceId: v.optional(v.string()),
+  })
+    .index('by_user', ['userId']),
+
+  talkVersions: defineTable({
+    talkId: v.id('talks'),
+    version: v.number(),
+    segments: v.array(
+      v.object({
+        id: v.string(),
+        text: v.string(),
+        tempo: v.optional(v.number()),
+        emphasis: v.optional(v.boolean()),
+      })
+    ),
+  }).index('by_talk', ['talkId']),
+
+  talkSets: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    talkIds: v.array(v.id('talks')),
+  }).index('by_user', ['userId']),
+
+  pronunciations: defineTable({
+    userId: v.string(),
+    word: v.string(),
+    pronunciation: v.string(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_user_word', ['userId', 'word']),
+
+  acronymRules: defineTable({
+    userId: v.string(),
+    acronym: v.string(),
+    /** 'letters' = spell out (default), 'word' = pronounce as a word */
+    speakAs: v.union(v.literal('letters'), v.literal('word')),
+    /** Custom pronunciation when speakAs is 'word' */
+    pronunciation: v.optional(v.string()),
+  })
+    .index('by_user', ['userId'])
+    .index('by_user_acronym', ['userId', 'acronym']),
+});
