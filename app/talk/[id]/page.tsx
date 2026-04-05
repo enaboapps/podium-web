@@ -1,11 +1,12 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useRef } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useTTS } from '@/hooks/useTTS';
+
+type SpeakState = 'idle' | 'loading' | 'speaking';
 
 export default function TalkPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -14,21 +15,84 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
 
+  const [index, setIndex] = useState(0);
+  const [speakState, setSpeakState] = useState<SpeakState>('idle');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const apiKey = settings?.elevenLabsApiKey;
-  const { speak, state, activeId } = useTTS(apiKey);
+  const segments = talk?.segments ?? [];
+  const current = segments[index];
+  const isLast = index === segments.length - 1;
+  const isSpeaking = speakState === 'speaking' || speakState === 'loading';
+
+  async function speak() {
+    if (!apiKey || !current || isSpeaking) return;
+
+    setSpeakState('loading');
+
+    try {
+      const response = await fetch(
+        'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM',
+        {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: current.text,
+            model_id: 'eleven_flash_v2_5',
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error('TTS failed');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setSpeakState('idle');
+      };
+      audio.onerror = () => setSpeakState('idle');
+
+      setSpeakState('speaking');
+      await audio.play();
+    } catch {
+      setSpeakState('idle');
+    }
+  }
+
+  function advance() {
+    if (isSpeaking || isLast) return;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex((i) => i + 1);
+  }
+
+  function back() {
+    if (isSpeaking || index === 0) return;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex((i) => i - 1);
+  }
 
   if (talk === undefined) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
-        <p className="text-[var(--muted)] text-sm">Loading...</p>
+        <p className="text-[var(--muted)] text-sm">Loading…</p>
       </div>
     );
   }
 
-  if (talk === null) {
+  if (talk === null || segments.length === 0) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
-        <p className="text-[var(--muted)] text-sm">Talk not found.</p>
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--background)]">
+        <p className="text-[var(--muted)] text-sm">No segments in this talk.</p>
+        <a href="/library" className="text-[var(--primary)] text-sm">← Library</a>
       </div>
     );
   }
@@ -36,58 +100,82 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)]">
-        <a href="/library" className="text-[var(--muted)] hover:text-[var(--foreground)] text-sm">
+      <header className="flex items-center justify-between px-5 pt-6 pb-4">
+        <a
+          href="/library"
+          className={`text-sm transition-colors ${isSpeaking ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}
+        >
           ← Library
         </a>
-        <h1 className="text-base font-semibold truncate mx-4 flex-1 text-center">{talk.title}</h1>
-        <div className="w-12" />
+        <span className="text-xs text-[var(--muted)]">
+          {index + 1} / {segments.length}
+        </span>
+        {!apiKey ? (
+          <a href="/settings" className="text-xs text-[var(--primary)]">Set key</a>
+        ) : (
+          <div className="w-12" />
+        )}
       </header>
 
-      {/* No API key banner */}
-      {!apiKey && (
-        <div className="mx-4 mt-4 px-4 py-3 bg-[var(--surface)] rounded-xl border border-[var(--border)] flex items-center justify-between gap-3">
-          <p className="text-sm text-[var(--muted)]">Add your ElevenLabs key to enable speech.</p>
-          <a href="/settings" className="text-sm text-[var(--primary)] font-medium whitespace-nowrap">
-            Settings →
-          </a>
-        </div>
-      )}
+      {/* Progress bar */}
+      <div className="h-0.5 bg-[var(--border)] mx-5">
+        <div
+          className="h-full bg-[var(--primary)] transition-all duration-300"
+          style={{ width: `${((index + 1) / segments.length) * 100}%` }}
+        />
+      </div>
 
-      {/* Segments */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {talk.segments.length === 0 && (
-          <p className="text-center text-[var(--muted)] py-12 text-sm">
-            This talk has no segments yet.
-          </p>
+      {/* Main tap area — locked during speech */}
+      <button
+        onClick={speak}
+        disabled={!apiKey || isSpeaking}
+        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full text-left disabled:cursor-default active:opacity-80"
+      >
+        <p className="text-2xl leading-relaxed font-medium text-center text-[var(--foreground)]">
+          {current.text}
+        </p>
+
+        {speakState === 'loading' && (
+          <p className="mt-8 text-sm text-[var(--muted)] animate-pulse">Loading…</p>
         )}
+        {speakState === 'speaking' && (
+          <p className="mt-8 text-sm text-[var(--primary)]">Speaking…</p>
+        )}
+        {speakState === 'idle' && apiKey && (
+          <p className="mt-8 text-xs text-[var(--muted)]">Tap to speak</p>
+        )}
+        {!apiKey && (
+          <p className="mt-8 text-xs text-[var(--muted)]">Add ElevenLabs key in Settings</p>
+        )}
+      </button>
 
-        {talk.segments.map((segment) => {
-          const isActive = activeId === segment.id;
-          const isLoading = isActive && state === 'loading';
-          const isPlaying = isActive && state === 'playing';
+      {/* Nav — fully hidden during speech */}
+      <div
+        className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
+          isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        <button
+          onClick={back}
+          disabled={index === 0}
+          className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
+        >
+          ←
+        </button>
 
-          return (
-            <button
-              key={segment.id}
-              onClick={() => speak(segment.text, segment.id)}
-              disabled={!apiKey}
-              className={`w-full text-left px-5 py-5 rounded-2xl border transition-all active:scale-[0.98] ${
-                isPlaying
-                  ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
-                  : isLoading
-                  ? 'bg-[var(--surface)] border-[var(--primary)] text-[var(--foreground)]'
-                  : 'bg-[var(--surface)] border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]'
-              } disabled:opacity-50 disabled:cursor-default`}
-            >
-              <p className="text-base leading-relaxed">{segment.text}</p>
-              {isLoading && (
-                <p className="text-xs mt-2 opacity-60">Speaking...</p>
-              )}
-            </button>
-          );
-        })}
-      </main>
+        {isLast ? (
+          <a href="/library" className="text-sm text-[var(--primary)] font-medium">
+            Done
+          </a>
+        ) : (
+          <button
+            onClick={advance}
+            className="w-12 h-12 flex items-center justify-center text-[var(--muted)] text-xl"
+          >
+            →
+          </button>
+        )}
+      </div>
     </div>
   );
 }
