@@ -33,6 +33,7 @@ export default defineSchema({
   talkVersions: defineTable({
     talkId: v.id('talks'),
     version: v.number(),
+    fullText: v.optional(v.string()),
     segments: v.array(
       v.object({
         id: v.string(),
