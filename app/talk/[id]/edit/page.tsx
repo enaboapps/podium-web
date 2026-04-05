@@ -22,6 +22,7 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -44,6 +45,7 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
   async function handleSave() {
     if (!clerkId || !dirty) return;
     setSaving(true);
+    setSaveError(false);
     try {
       const segments = previewSegments.map((text, i) => ({ id: String(i), text }));
       await saveEditedText({
@@ -56,6 +58,8 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
       await clearTalkAudio(id);
       setDirty(false);
       setSaved(true);
+    } catch {
+      setSaveError(true);
     } finally {
       setSaving(false);
     }
@@ -80,9 +84,9 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
           <button
             onClick={handleSave}
             disabled={!dirty || saving}
-            className="text-sm font-semibold text-[var(--primary)] disabled:opacity-30"
+            className={`text-sm font-semibold disabled:opacity-30 ${saveError ? 'text-red-400' : 'text-[var(--primary)]'}`}
           >
-            {saving ? '…' : saved ? 'Saved' : 'Save'}
+            {saving ? '…' : saveError ? 'Failed — retry' : saved ? 'Saved' : 'Save'}
           </button>
         </div>
       </header>
