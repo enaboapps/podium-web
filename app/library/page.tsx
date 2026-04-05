@@ -32,6 +32,7 @@ export default function LibraryPage() {
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [assignTalkId, setAssignTalkId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -42,6 +43,8 @@ export default function LibraryPage() {
   const removeTalk = useMutation(api.talks.remove);
   const createSet = useMutation(api.talkSets.create);
   const removeSet = useMutation(api.talkSets.remove);
+  const addTalkToSet = useMutation(api.talkSets.addTalk);
+  const removeTalkFromSet = useMutation(api.talkSets.removeTalk);
 
   // Compute preview segments based on current draft mode
   const previewSegments = useMemo(() => {
@@ -163,26 +166,37 @@ export default function LibraryPage() {
                 <a href={`/talk/${talk._id}`} className="flex-1 font-medium text-[var(--foreground)] truncate">
                   {talk.title}
                 </a>
-                {confirmDeleteId === talk._id ? (
-                  <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
+                  {sets && sets.length > 0 && (
                     <button
-                      onClick={() => { clerkId && removeTalk({ id: talk._id as Id<'talks'>, userId: clerkId }); setConfirmDeleteId(null); }}
-                      className="text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                      onClick={() => setAssignTalkId(talk._id)}
+                      className="text-[var(--muted)] hover:text-[var(--primary)] text-lg px-2 py-1 rounded transition-colors leading-none"
+                      title="Add to set"
                     >
-                      Confirm
+                      ⊕
                     </button>
-                    <button onClick={() => setConfirmDeleteId(null)} className="text-[var(--muted)] text-xs px-2 py-1 rounded transition-colors">
-                      Cancel
+                  )}
+                  {confirmDeleteId === talk._id ? (
+                    <>
+                      <button
+                        onClick={() => { clerkId && removeTalk({ id: talk._id as Id<'talks'>, userId: clerkId }); setConfirmDeleteId(null); }}
+                        className="text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        Confirm
+                      </button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-[var(--muted)] text-xs px-2 py-1 rounded transition-colors">
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(talk._id)}
+                      className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                    >
+                      Delete
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmDeleteId(talk._id)}
-                    className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
-                  >
-                    Delete
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             ))}
             {createMode === 'new' && (
@@ -211,7 +225,7 @@ export default function LibraryPage() {
             {sets?.map((set: Doc<'talkSets'>) => (
               <div key={set._id} className="bg-[var(--surface)] rounded-xl px-4 py-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-[var(--foreground)]">{set.title}</span>
+                  <a href={`/set/${set._id}`} className="flex-1 font-medium text-[var(--foreground)]">{set.title}</a>
                   {confirmDeleteId === set._id ? (
                     <div className="flex items-center gap-2 shrink-0">
                       <button
@@ -347,6 +361,44 @@ export default function LibraryPage() {
                   Showing first {PREVIEW_CAP} of {previewSegments.length} segments
                 </p>
               )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Set assignment sheet */}
+      {assignTalkId && sets && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/60" onClick={() => setAssignTalkId(null)} />
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--background)] rounded-t-2xl max-h-[60dvh] flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--border)] shrink-0">
+              <button onClick={() => setAssignTalkId(null)} className="text-[var(--muted)] text-sm">Done</button>
+              <span className="text-sm font-semibold">Add to set</span>
+              <div className="w-12" />
+            </div>
+            <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+              {sets.map((set) => {
+                const inSet = set.talkIds.includes(assignTalkId as Id<'talks'>);
+                return (
+                  <button
+                    key={set._id}
+                    onClick={() => {
+                      if (!clerkId) return;
+                      if (inSet) {
+                        removeTalkFromSet({ id: set._id, userId: clerkId, talkId: assignTalkId as Id<'talks'> });
+                      } else {
+                        addTalkToSet({ id: set._id, userId: clerkId, talkId: assignTalkId as Id<'talks'> });
+                      }
+                    }}
+                    className="w-full flex items-center justify-between bg-[var(--surface)] rounded-xl px-4 py-4 text-left"
+                  >
+                    <span className="font-medium text-[var(--foreground)]">{set.title}</span>
+                    <span className={`text-lg ${inSet ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>
+                      {inSet ? '✓' : '+'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </>
