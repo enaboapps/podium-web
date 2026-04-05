@@ -68,11 +68,47 @@ export const saveEditedText = mutation({
       talkId: id,
       version: existingVersions.length + 1,
       fullText: talk.fullText,
+      segmentMode: talk.segmentMode,
       segments: talk.segments,
     });
 
     // Update talk with new text, segments, and mode
     await ctx.db.patch(id, { fullText, segments, segmentMode });
+  },
+});
+
+export const restoreVersion = mutation({
+  args: {
+    talkId: v.id('talks'),
+    versionId: v.id('talkVersions'),
+    userId: v.string(),
+  },
+  handler: async (ctx, { talkId, versionId, userId }) => {
+    const talk = await ctx.db.get(talkId);
+    if (!talk || talk.userId !== userId) throw new Error('Not found');
+
+    const version = await ctx.db.get(versionId);
+    if (!version || version.talkId !== talkId) throw new Error('Version not found');
+
+    // Snapshot current state as a new version before restoring
+    const existingVersions = await ctx.db
+      .query('talkVersions')
+      .withIndex('by_talk', (q) => q.eq('talkId', talkId))
+      .collect();
+
+    await ctx.db.insert('talkVersions', {
+      talkId,
+      version: existingVersions.length + 1,
+      fullText: talk.fullText,
+      segmentMode: talk.segmentMode,
+      segments: talk.segments,
+    });
+
+    await ctx.db.patch(talkId, {
+      fullText: version.fullText,
+      segmentMode: version.segmentMode,
+      segments: version.segments,
+    });
   },
 });
 

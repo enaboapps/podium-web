@@ -73,13 +73,16 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
         <a href={`/talk/${id}`} className="text-sm text-[var(--muted)]">← Back</a>
         <span className="text-sm font-semibold truncate mx-4 flex-1 text-center">{talk?.title}</span>
-        <button
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="text-sm font-semibold text-[var(--primary)] disabled:opacity-30 w-12 text-right"
-        >
-          {saving ? '…' : saved ? 'Saved' : 'Save'}
-        </button>
+        <div className="flex items-center gap-3">
+          <a href={`/talk/${id}/history`} className="text-xs text-[var(--muted)]">History</a>
+          <button
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className="text-sm font-semibold text-[var(--primary)] disabled:opacity-30"
+          >
+            {saving ? '…' : saved ? 'Saved' : 'Save'}
+          </button>
+        </div>
       </header>
 
       {/* Mode + segment count */}
