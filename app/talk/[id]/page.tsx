@@ -28,15 +28,36 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   function handleTap() {
     if (isLocked) return;
     if (speakState === 'spoken') {
-      if (!isLast) doAdvance();
+      if (!isLast) doAdvanceAndSpeak();
       return;
     }
     // idle — speak
     doSpeak();
   }
 
-  async function doSpeak() {
-    if (!apiKey || !current) return;
+  function doSpeak() {
+    speakAt(index);
+  }
+
+  function doAdvance() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex((i) => i + 1);
+  }
+
+  function doAdvanceAndSpeak() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    const nextIndex = index + 1;
+    setIndex(nextIndex);
+    // speak the next segment immediately
+    speakAt(nextIndex);
+  }
+
+  async function speakAt(i: number) {
+    const segment = segments[i];
+    if (!apiKey || !segment) return;
 
     setSpeakState('loading');
 
@@ -47,7 +68,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           method: 'POST',
           headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: current.text,
+            text: segment.text,
             model_id: 'eleven_flash_v2_5',
             voice_settings: { stability: 0.5, similarity_boost: 0.75 },
           }),
@@ -72,13 +93,6 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     } catch {
       setSpeakState('idle');
     }
-  }
-
-  function doAdvance() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setSpeakState('idle');
-    setIndex((i) => i + 1);
   }
 
   function back() {
