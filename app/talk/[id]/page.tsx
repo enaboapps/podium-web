@@ -40,6 +40,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     if (!apiKey || segments.length === 0) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
+
     async function prepare() {
       // Phase 1: read everything from IDB in parallel
       const idbResults = await Promise.all(
@@ -50,6 +53,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           blob: await getCachedAudio(`${id}:${seg.text}`),
         }))
       );
+
+      if (signal.aborted) return;
 
       const hits = idbResults.filter((r) => r.blob);
       const misses = idbResults.filter((r) => !r.blob);
@@ -83,17 +88,22 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
                 model_id: 'eleven_flash_v2_5',
                 voice_settings: { stability: 0.5, similarity_boost: 0.75 },
               }),
+              signal,
             });
             if (!res.ok) throw new Error('TTS failed');
             const blob = await res.blob();
+            if (signal.aborted) return;
             await setCachedAudio(key, blob);
             audioUrls.current.set(i, URL.createObjectURL(blob));
-          } catch {
+          } catch (err) {
+            if ((err as Error).name === 'AbortError') return;
             setCacheFailed(true);
           } finally {
-            completed++;
-            setCacheLoaded(completed);
-            if (completed === segments.length) setCacheReady(true);
+            if (!signal.aborted) {
+              completed++;
+              setCacheLoaded(completed);
+              if (completed === segments.length) setCacheReady(true);
+            }
           }
         })
       );
@@ -102,6 +112,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     prepare();
 
     return () => {
+      controller.abort();
       audioUrls.current.forEach((url) => URL.revokeObjectURL(url));
       audioUrls.current.clear();
     };
