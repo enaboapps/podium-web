@@ -73,12 +73,39 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
           </p>
         )}
 
-        {versions.map((v) => {
+        {/* Current state entry */}
+        {versions.length > 0 && (
+          <div className="bg-[var(--surface)] rounded-2xl border border-[var(--primary)]/40 overflow-hidden">
+            <button
+              onClick={() => setExpandedId(expandedId === 'current' ? null : 'current')}
+              className="w-full flex items-center justify-between px-4 py-4 text-left"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-[var(--foreground)]">Current</p>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-white">LIVE</span>
+                </div>
+                <p className="text-xs text-[var(--muted)] mt-0.5">
+                  {talk!.segments.length} segments{talk!.segmentMode && ` · ${talk!.segmentMode}`}
+                </p>
+              </div>
+              <span className="text-[var(--muted)] text-xs">{expandedId === 'current' ? '▲' : '▼'}</span>
+            </button>
+            {expandedId === 'current' && (
+              <div className="border-t border-[var(--border)] px-4 py-3 max-h-64 overflow-y-auto">
+                <p className="text-sm text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">{currentText}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {versions.map((v, idx) => {
           const isExpanded = expandedId === v._id;
           const isRestoring = restoring === v._id;
           const isRestored = restored === v._id;
           const mode = getViewMode(v._id);
           const versionText = v.fullText ?? v.segments.map((s) => s.text).join('\n\n');
+          const isFirst = idx === versions.length - 1;
 
           return (
             <div
@@ -91,9 +118,14 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                 className="w-full flex items-center justify-between px-4 py-4 text-left"
               >
                 <div>
-                  <p className="text-sm font-medium text-[var(--foreground)]">
-                    Version {v.version}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      Version {v.version}
+                    </p>
+                    {isFirst && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)]">FIRST</span>
+                    )}
+                  </div>
                   <p className="text-xs text-[var(--muted)] mt-0.5">
                     {formatDate(v._creationTime)} · {v.segments.length} segments
                     {v.segmentMode && ` · ${v.segmentMode}`}
