@@ -122,15 +122,14 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-[var(--foreground)]">
-                      Version {v.version}
+                      {formatDate(v._creationTime)}
                     </p>
                     {isFirst && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)]">FIRST</span>
                     )}
                   </div>
                   <p className="text-xs text-[var(--muted)] mt-0.5">
-                    {formatDate(v._creationTime)} · {v.segments.length} segments
-                    {v.segmentMode && ` · ${v.segmentMode}`}
+                    {v.segments.length} segments{v.segmentMode && ` · ${v.segmentMode}`}
                   </p>
                 </div>
                 <span className="text-[var(--muted)] text-xs">{isExpanded ? '▲' : '▼'}</span>
