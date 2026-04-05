@@ -1,7 +1,14 @@
 import * as mammoth from 'mammoth';
 
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 /** Extract paragraphs from a .docx or .pdf file. Returns non-empty trimmed strings. */
 export async function parseFile(file: File): Promise<string[]> {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+  }
+
   const ext = file.name.split('.').pop()?.toLowerCase();
 
   if (ext === 'docx') {
