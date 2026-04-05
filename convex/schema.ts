@@ -36,6 +36,7 @@ export default defineSchema({
     talkId: v.id('talks'),
     version: v.number(),
     fullText: v.optional(v.string()),
+    segmentMode: v.optional(v.union(v.literal('paragraphs'), v.literal('sentences'))),
     segments: v.array(
       v.object({
         id: v.string(),
