@@ -2,9 +2,12 @@
 
 import { use, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
+import { diffWords } from 'diff';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+
+type ViewMode = 'preview' | 'diff';
 
 export default function HistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -15,6 +18,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
   const restoreVersion = useMutation(api.talks.restoreVersion);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<Record<string, ViewMode>>({});
   const [restoring, setRestoring] = useState<string | null>(null);
   const [restored, setRestored] = useState<string | null>(null);
 
@@ -35,6 +39,16 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
       timeStyle: 'short',
     }).format(new Date(timestamp));
   }
+
+  function getViewMode(vId: string): ViewMode {
+    return viewMode[vId] ?? 'diff';
+  }
+
+  function setMode(vId: string, mode: ViewMode) {
+    setViewMode((prev) => ({ ...prev, [vId]: mode }));
+  }
+
+  const currentText = talk?.fullText ?? talk?.segments.map((s) => s.text).join('\n\n') ?? '';
 
   if (talk === undefined || versions === undefined) {
     return (
@@ -63,6 +77,8 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
           const isExpanded = expandedId === v._id;
           const isRestoring = restoring === v._id;
           const isRestored = restored === v._id;
+          const mode = getViewMode(v._id);
+          const versionText = v.fullText ?? v.segments.map((s) => s.text).join('\n\n');
 
           return (
             <div
@@ -86,26 +102,37 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                 <span className="text-[var(--muted)] text-xs">{isExpanded ? '▲' : '▼'}</span>
               </button>
 
-              {/* Expanded preview + restore */}
               {isExpanded && (
                 <div className="border-t border-[var(--border)]">
-                  {v.fullText ? (
-                    <div className="px-4 py-3 max-h-48 overflow-y-auto">
-                      <p className="text-sm text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">
-                        {v.fullText}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="px-4 py-3 space-y-2 max-h-48 overflow-y-auto">
-                      {v.segments.map((s, i) => (
-                        <p key={s.id} className="text-sm text-[var(--foreground)] leading-relaxed">
-                          <span className="text-[var(--muted)] text-xs mr-2">{i + 1}</span>
-                          {s.text}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+                  {/* Preview / Diff toggle */}
+                  <div className="flex gap-1 px-4 py-2 border-b border-[var(--border)]">
+                    {(['diff', 'preview'] as ViewMode[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setMode(v._id, m)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition-colors ${
+                          mode === m
+                            ? 'bg-[var(--primary)] text-white'
+                            : 'bg-[var(--background)] text-[var(--muted)]'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
 
+                  {/* Content */}
+                  <div className="px-4 py-3 max-h-64 overflow-y-auto">
+                    {mode === 'preview' ? (
+                      <p className="text-sm text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">
+                        {versionText}
+                      </p>
+                    ) : (
+                      <DiffView oldText={versionText} newText={currentText} />
+                    )}
+                  </div>
+
+                  {/* Restore */}
                   <div className="px-4 py-3 border-t border-[var(--border)]">
                     <button
                       onClick={() => handleRestore(v._id as Id<'talkVersions'>)}
@@ -122,5 +149,31 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
         })}
       </main>
     </div>
+  );
+}
+
+function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
+  const parts = diffWords(oldText, newText);
+
+  return (
+    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+      {parts.map((part, i) => {
+        if (part.removed) {
+          return (
+            <span key={i} className="bg-red-900/40 text-red-300 line-through">
+              {part.value}
+            </span>
+          );
+        }
+        if (part.added) {
+          return (
+            <span key={i} className="bg-green-900/40 text-green-300">
+              {part.value}
+            </span>
+          );
+        }
+        return <span key={i} className="text-[var(--muted)]">{part.value}</span>;
+      })}
+    </p>
   );
 }
