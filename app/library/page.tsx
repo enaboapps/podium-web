@@ -29,6 +29,7 @@ export default function LibraryPage() {
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -160,12 +161,26 @@ export default function LibraryPage() {
                 <a href={`/talk/${talk._id}`} className="flex-1 font-medium text-[var(--foreground)] truncate">
                   {talk.title}
                 </a>
-                <button
-                  onClick={() => clerkId && removeTalk({ id: talk._id as Id<'talks'>, userId: clerkId })}
-                  className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
-                >
-                  Delete
-                </button>
+                {confirmDeleteId === talk._id ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => { clerkId && removeTalk({ id: talk._id as Id<'talks'>, userId: clerkId }); setConfirmDeleteId(null); }}
+                      className="text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                    >
+                      Confirm
+                    </button>
+                    <button onClick={() => setConfirmDeleteId(null)} className="text-[var(--muted)] text-xs px-2 py-1 rounded transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(talk._id)}
+                    className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
             {createMode === 'new' && (
@@ -195,12 +210,26 @@ export default function LibraryPage() {
               <div key={set._id} className="bg-[var(--surface)] rounded-xl px-4 py-4">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-[var(--foreground)]">{set.title}</span>
-                  <button
-                    onClick={() => clerkId && removeSet({ id: set._id as Id<'talkSets'>, userId: clerkId })}
-                    className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {confirmDeleteId === set._id ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => { clerkId && removeSet({ id: set._id as Id<'talkSets'>, userId: clerkId }); setConfirmDeleteId(null); }}
+                        className="text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        Confirm
+                      </button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-[var(--muted)] text-xs px-2 py-1 rounded transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(set._id)}
+                      className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs text-[var(--muted)] mt-1">
                   {set.talkIds.length} {set.talkIds.length === 1 ? 'talk' : 'talks'}
