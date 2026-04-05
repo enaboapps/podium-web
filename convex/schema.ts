@@ -6,6 +6,7 @@ export default defineSchema({
     clerkId: v.string(),
     name: v.string(),
     email: v.string(),
+    elevenLabsApiKey: v.optional(v.string()),
   }).index('by_clerk_id', ['clerkId']),
 
   talks: defineTable({
