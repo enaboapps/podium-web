@@ -54,6 +54,19 @@ export const remove = mutation({
   },
 });
 
+export const updateSegments = mutation({
+  args: {
+    id: v.id('talks'),
+    userId: v.string(),
+    segments: v.array(v.object({ id: v.string(), text: v.string() })),
+  },
+  handler: async (ctx, { id, userId, segments }) => {
+    const talk = await ctx.db.get(id);
+    if (!talk || talk.userId !== userId) throw new Error('Not found');
+    await ctx.db.patch(id, { segments });
+  },
+});
+
 export const rename = mutation({
   args: { id: v.id('talks'), userId: v.string(), title: v.string() },
   handler: async (ctx, { id, userId, title }) => {

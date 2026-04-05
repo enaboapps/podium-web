@@ -133,11 +133,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         <span className="text-xs text-[var(--muted)]">
           {index + 1} / {segments.length}
         </span>
-        {!apiKey ? (
-          <a href="/settings" className="text-xs text-[var(--primary)]">Set key</a>
-        ) : (
-          <div className="w-12" />
-        )}
+        <a href={`/talk/${id}/edit`} className="text-xs text-[var(--muted)] w-12 text-right">
+          Edit
+        </a>
       </header>
 
       {/* Progress bar */}
