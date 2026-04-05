@@ -38,9 +38,10 @@ export const createWithSegments = mutation({
     userId: v.string(),
     title: v.string(),
     segments: v.array(v.object({ id: v.string(), text: v.string() })),
+    fullText: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, title, segments }) => {
-    return await ctx.db.insert('talks', { userId, title, segments });
+  handler: async (ctx, { userId, title, segments, fullText }) => {
+    return await ctx.db.insert('talks', { userId, title, segments, fullText });
   },
 });
 

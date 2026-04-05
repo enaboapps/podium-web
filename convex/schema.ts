@@ -25,6 +25,8 @@ export default defineSchema({
     ),
     /** ElevenLabs voice ID */
     voiceId: v.optional(v.string()),
+    /** Raw full text of the talk, joined from all segments */
+    fullText: v.optional(v.string()),
   })
     .index('by_user', ['userId']),
 

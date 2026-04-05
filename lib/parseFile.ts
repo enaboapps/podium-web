@@ -13,11 +13,35 @@ export async function parseFile(file: File): Promise<string[]> {
   throw new Error('Unsupported file type. Please use .docx or .pdf');
 }
 
+/** Split an array of paragraphs into individual sentences using Intl.Segmenter. */
+export function splitIntoSentences(paragraphs: string[]): string[] {
+  const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+  const sentences: string[] = [];
+
+  for (const para of paragraphs) {
+    for (const { segment } of segmenter.segment(para)) {
+      const s = segment.trim();
+      if (s.length > 0) sentences.push(s);
+    }
+  }
+
+  return sentences;
+}
+
+/** Join paragraphs into a single full-text string. */
+export function joinFullText(paragraphs: string[]): string {
+  return paragraphs.join('\n\n');
+}
+
+// --- DOCX ---
+
 async function parseDocx(file: File): Promise<string[]> {
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.extractRawText({ arrayBuffer });
   return splitParagraphs(result.value);
 }
+
+// --- PDF ---
 
 async function parsePdf(file: File): Promise<string[]> {
   const pdfjsLib = await import('pdfjs-dist');
@@ -57,7 +81,6 @@ function groupIntoLines(items: object[]): TextLine[] {
 
   if (textItems.length === 0) return [];
 
-  // Sort top-to-bottom (y decreases going down), then left-to-right
   textItems.sort((a, b) => {
     const yDiff = b.transform[5] - a.transform[5];
     if (Math.abs(yDiff) > 2) return yDiff;
@@ -92,14 +115,9 @@ function groupIntoParagraphs(lines: TextLine[]): string[] {
   if (lines.length === 0) return [];
   if (lines.length === 1) return [lines[0].text];
 
-  // Calculate gaps between consecutive lines
   const gaps = lines.slice(1).map((line, i) => lines[i].y - line.y);
-
-  // Median gap = typical line spacing
   const sorted = [...gaps].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
-
-  // A gap > 1.8× median signals a paragraph break
   const threshold = median * 1.8;
 
   const paragraphs: string[] = [];

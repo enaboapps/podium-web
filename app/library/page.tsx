@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Doc } from '@/convex/_generated/dataModel';
-import { parseFile } from '@/lib/parseFile';
+import { parseFile, splitIntoSentences, joinFullText } from '@/lib/parseFile';
 
 type Tab = 'talks' | 'sets';
-type CreateMode = 'none' | 'new' | 'import' | 'set';
+type CreateMode = 'none' | 'new' | 'set';
+type SegmentMode = 'paragraphs' | 'sentences';
+
+interface ImportDraft {
+  title: string;
+  fullText: string;
+  paragraphs: string[];
+  mode: SegmentMode;
+}
 
 export default function LibraryPage() {
   const { clerkId } = useCurrentUser();
@@ -18,8 +26,9 @@ export default function LibraryPage() {
   const [newTalkTitle, setNewTalkTitle] = useState('');
   const [newSetTitle, setNewSetTitle] = useState('');
   const [fabOpen, setFabOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const [importError, setImportError] = useState('');
+  const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -31,9 +40,15 @@ export default function LibraryPage() {
   const createSet = useMutation(api.talkSets.create);
   const removeSet = useMutation(api.talkSets.remove);
 
-  function closeFab() {
-    setFabOpen(false);
-  }
+  // Compute preview segments based on current draft mode
+  const previewSegments = useMemo(() => {
+    if (!importDraft) return [];
+    return importDraft.mode === 'sentences'
+      ? splitIntoSentences(importDraft.paragraphs)
+      : importDraft.paragraphs;
+  }, [importDraft]);
+
+  function closeFab() { setFabOpen(false); }
 
   function openNew() {
     closeFab();
@@ -42,9 +57,50 @@ export default function LibraryPage() {
 
   function openImport() {
     closeFab();
-    setCreateMode('import');
     setImportError('');
     setTimeout(() => fileInputRef.current?.click(), 50);
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    setImportError('');
+
+    try {
+      const paragraphs = await parseFile(file);
+      if (paragraphs.length === 0) throw new Error('No text found in file.');
+
+      setImportDraft({
+        title: file.name.replace(/\.(docx|pdf)$/i, ''),
+        fullText: joinFullText(paragraphs),
+        paragraphs,
+        mode: 'paragraphs',
+      });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to read file.');
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!clerkId || !importDraft) return;
+
+    setImporting(true);
+    try {
+      const segments = previewSegments.map((text, i) => ({ id: String(i), text }));
+      await createTalkWithSegments({
+        userId: clerkId,
+        title: importDraft.title.trim() || 'Untitled',
+        segments,
+        fullText: importDraft.fullText,
+      });
+      setImportDraft(null);
+    } catch {
+      setImportError('Failed to save talk.');
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function handleCreateTalk(e: React.FormEvent) {
@@ -63,30 +119,6 @@ export default function LibraryPage() {
     setCreateMode('none');
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !clerkId) return;
-
-    setImporting(true);
-    setImportError('');
-
-    try {
-      const paragraphs = await parseFile(file);
-      if (paragraphs.length === 0) throw new Error('No text found in file.');
-
-      const title = file.name.replace(/\.(docx|pdf)$/i, '');
-      const segments = paragraphs.map((text, i) => ({ id: String(i), text }));
-
-      await createTalkWithSegments({ userId: clerkId, title, segments });
-      setCreateMode('none');
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Failed to import file.');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
@@ -99,49 +131,32 @@ export default function LibraryPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-[var(--border)]">
-        <button
-          onClick={() => setTab('talks')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            tab === 'talks'
-              ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-              : 'text-[var(--muted)]'
-          }`}
-        >
-          Talks
-        </button>
-        <button
-          onClick={() => setTab('sets')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            tab === 'sets'
-              ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-              : 'text-[var(--muted)]'
-          }`}
-        >
-          Sets
-        </button>
+        {(['talks', 'sets'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-3 text-sm font-medium capitalize transition-colors ${
+              tab === t
+                ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
+                : 'text-[var(--muted)]'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
       </div>
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-24">
         {tab === 'talks' && (
           <>
-            {talks === undefined && (
-              <p className="text-center text-[var(--muted)] py-8">Loading...</p>
-            )}
+            {talks === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
             {talks?.length === 0 && createMode === 'none' && (
-              <p className="text-center text-[var(--muted)] py-12 text-sm">
-                No talks yet. Tap + to create your first.
-              </p>
+              <p className="text-center text-[var(--muted)] py-12 text-sm">No talks yet. Tap + to create your first.</p>
             )}
             {talks?.map((talk: Doc<'talks'>) => (
-              <div
-                key={talk._id}
-                className="flex items-center justify-between bg-[var(--surface)] rounded-xl px-4 py-4 gap-3"
-              >
-                <a
-                  href={`/talk/${talk._id}`}
-                  className="flex-1 font-medium text-[var(--foreground)] truncate"
-                >
+              <div key={talk._id} className="flex items-center justify-between bg-[var(--surface)] rounded-xl px-4 py-4 gap-3">
+                <a href={`/talk/${talk._id}`} className="flex-1 font-medium text-[var(--foreground)] truncate">
                   {talk.title}
                 </a>
                 <button
@@ -152,7 +167,6 @@ export default function LibraryPage() {
                 </button>
               </div>
             ))}
-
             {createMode === 'new' && (
               <form onSubmit={handleCreateTalk} className="flex gap-2">
                 <input
@@ -162,47 +176,22 @@ export default function LibraryPage() {
                   placeholder="Talk title"
                   className="flex-1 bg-[var(--surface)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-[var(--muted)] outline-none border border-[var(--border)] focus:border-[var(--primary)]"
                 />
-                <button
-                  type="submit"
-                  className="bg-[var(--primary)] text-white rounded-xl px-4 py-3 text-sm font-medium"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreateMode('none')}
-                  className="text-[var(--muted)] px-3 py-3 text-sm"
-                >
-                  Cancel
-                </button>
+                <button type="submit" className="bg-[var(--primary)] text-white rounded-xl px-4 py-3 text-sm font-medium">Add</button>
+                <button type="button" onClick={() => setCreateMode('none')} className="text-[var(--muted)] px-3 py-3 text-sm">Cancel</button>
               </form>
             )}
-
-            {createMode === 'import' && importing && (
-              <p className="text-center text-[var(--muted)] py-4 text-sm">Importing...</p>
-            )}
-
-            {importError && (
-              <p className="text-center text-red-400 py-2 text-sm">{importError}</p>
-            )}
+            {importError && <p className="text-center text-red-400 py-2 text-sm">{importError}</p>}
           </>
         )}
 
         {tab === 'sets' && (
           <>
-            {sets === undefined && (
-              <p className="text-center text-[var(--muted)] py-8">Loading...</p>
-            )}
+            {sets === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
             {sets?.length === 0 && createMode === 'none' && (
-              <p className="text-center text-[var(--muted)] py-12 text-sm">
-                No sets yet. Group talks for an event.
-              </p>
+              <p className="text-center text-[var(--muted)] py-12 text-sm">No sets yet. Group talks for an event.</p>
             )}
             {sets?.map((set: Doc<'talkSets'>) => (
-              <div
-                key={set._id}
-                className="bg-[var(--surface)] rounded-xl px-4 py-4"
-              >
+              <div key={set._id} className="bg-[var(--surface)] rounded-xl px-4 py-4">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-[var(--foreground)]">{set.title}</span>
                   <button
@@ -226,19 +215,8 @@ export default function LibraryPage() {
                   placeholder="Set title (e.g. Conference 2026)"
                   className="flex-1 bg-[var(--surface)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-[var(--muted)] outline-none border border-[var(--border)] focus:border-[var(--primary)]"
                 />
-                <button
-                  type="submit"
-                  className="bg-[var(--primary)] text-white rounded-xl px-4 py-3 text-sm font-medium"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreateMode('none')}
-                  className="text-[var(--muted)] px-3 py-3 text-sm"
-                >
-                  Cancel
-                </button>
+                <button type="submit" className="bg-[var(--primary)] text-white rounded-xl px-4 py-3 text-sm font-medium">Add</button>
+                <button type="button" onClick={() => setCreateMode('none')} className="text-[var(--muted)] px-3 py-3 text-sm">Cancel</button>
               </form>
             )}
           </>
@@ -246,21 +224,10 @@ export default function LibraryPage() {
       </main>
 
       {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".docx,.pdf"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      <input ref={fileInputRef} type="file" accept=".docx,.pdf" className="hidden" onChange={handleFileChange} />
 
       {/* FAB overlay */}
-      {fabOpen && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={closeFab}
-        />
-      )}
+      {fabOpen && <div className="fixed inset-0 z-10" onClick={closeFab} />}
 
       {/* FAB menu */}
       <div className="fixed bottom-6 right-5 z-20 flex flex-col items-end gap-3">
@@ -281,22 +248,72 @@ export default function LibraryPage() {
             </button>
           </>
         )}
-
         <button
-          onClick={() => {
-            if (tab === 'sets') {
-              openNew();
-            } else {
-              setFabOpen((v) => !v);
-            }
-          }}
-          className={`w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg transition-transform ${
-            fabOpen ? 'rotate-45' : ''
-          } active:scale-95`}
+          onClick={() => { if (tab === 'sets') openNew(); else setFabOpen((v) => !v); }}
+          className={`w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg transition-transform ${fabOpen ? 'rotate-45' : ''} active:scale-95`}
         >
           +
         </button>
       </div>
+
+      {/* Import preview sheet */}
+      {importDraft && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/60" onClick={() => setImportDraft(null)} />
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--background)] rounded-t-2xl max-h-[85dvh] flex flex-col">
+            {/* Sheet header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--border)] shrink-0">
+              <button onClick={() => setImportDraft(null)} className="text-[var(--muted)] text-sm">Cancel</button>
+              <span className="text-sm font-semibold">Import talk</span>
+              <button
+                onClick={handleConfirmImport}
+                disabled={importing}
+                className="text-[var(--primary)] text-sm font-semibold disabled:opacity-40"
+              >
+                {importing ? 'Saving…' : 'Import'}
+              </button>
+            </div>
+
+            {/* Title field */}
+            <div className="px-5 py-3 border-b border-[var(--border)] shrink-0">
+              <input
+                value={importDraft.title}
+                onChange={(e) => setImportDraft({ ...importDraft, title: e.target.value })}
+                className="w-full bg-transparent text-base font-medium text-[var(--foreground)] outline-none placeholder-[var(--muted)]"
+                placeholder="Talk title"
+              />
+            </div>
+
+            {/* Mode toggle */}
+            <div className="flex items-center gap-1 px-5 py-3 border-b border-[var(--border)] shrink-0">
+              <span className="text-xs text-[var(--muted)] mr-2">Split by</span>
+              {(['paragraphs', 'sentences'] as SegmentMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setImportDraft({ ...importDraft, mode: m })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
+                    importDraft.mode === m
+                      ? 'bg-[var(--primary)] text-white'
+                      : 'bg-[var(--surface)] text-[var(--muted)]'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+              <span className="ml-auto text-xs text-[var(--muted)]">{previewSegments.length} segments</span>
+            </div>
+
+            {/* Segment preview */}
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+              {previewSegments.map((text, i) => (
+                <div key={i} className="bg-[var(--surface)] rounded-xl px-4 py-3">
+                  <p className="text-sm text-[var(--foreground)] leading-relaxed">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
