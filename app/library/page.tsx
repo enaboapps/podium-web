@@ -1,36 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Doc } from '@/convex/_generated/dataModel';
+import { parseFile } from '@/lib/parseFile';
 
 type Tab = 'talks' | 'sets';
+type CreateMode = 'none' | 'new' | 'import' | 'set';
 
 export default function LibraryPage() {
   const { clerkId } = useCurrentUser();
   const [tab, setTab] = useState<Tab>('talks');
+  const [createMode, setCreateMode] = useState<CreateMode>('none');
   const [newTalkTitle, setNewTalkTitle] = useState('');
   const [newSetTitle, setNewSetTitle] = useState('');
-  const [showNewTalk, setShowNewTalk] = useState(false);
-  const [showNewSet, setShowNewSet] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
   const sets = useQuery(api.talkSets.list, clerkId ? { userId: clerkId } : 'skip');
 
   const createTalk = useMutation(api.talks.create);
+  const createTalkWithSegments = useMutation(api.talks.createWithSegments);
   const removeTalk = useMutation(api.talks.remove);
   const createSet = useMutation(api.talkSets.create);
   const removeSet = useMutation(api.talkSets.remove);
+
+  function closeFab() {
+    setFabOpen(false);
+  }
+
+  function openNew() {
+    closeFab();
+    setCreateMode(tab === 'talks' ? 'new' : 'set');
+  }
+
+  function openImport() {
+    closeFab();
+    setCreateMode('import');
+    setImportError('');
+    setTimeout(() => fileInputRef.current?.click(), 50);
+  }
 
   async function handleCreateTalk(e: React.FormEvent) {
     e.preventDefault();
     if (!clerkId || !newTalkTitle.trim()) return;
     await createTalk({ userId: clerkId, title: newTalkTitle.trim() });
     setNewTalkTitle('');
-    setShowNewTalk(false);
+    setCreateMode('none');
   }
 
   async function handleCreateSet(e: React.FormEvent) {
@@ -38,13 +60,37 @@ export default function LibraryPage() {
     if (!clerkId || !newSetTitle.trim()) return;
     await createSet({ userId: clerkId, title: newSetTitle.trim() });
     setNewSetTitle('');
-    setShowNewSet(false);
+    setCreateMode('none');
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !clerkId) return;
+
+    setImporting(true);
+    setImportError('');
+
+    try {
+      const paragraphs = await parseFile(file);
+      if (paragraphs.length === 0) throw new Error('No text found in file.');
+
+      const title = file.name.replace(/\.(docx|pdf)$/i, '');
+      const segments = paragraphs.map((text, i) => ({ id: String(i), text }));
+
+      await createTalkWithSegments({ userId: clerkId, title, segments });
+      setCreateMode('none');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to import file.');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   }
 
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-safe-top pb-4 pt-6 border-b border-[var(--border)]">
+      <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)]">
         <h1 className="text-xl font-semibold tracking-tight">Podium</h1>
         <a href="/settings" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
           Settings
@@ -76,13 +122,13 @@ export default function LibraryPage() {
       </div>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-24">
         {tab === 'talks' && (
           <>
             {talks === undefined && (
               <p className="text-center text-[var(--muted)] py-8">Loading...</p>
             )}
-            {talks?.length === 0 && !showNewTalk && (
+            {talks?.length === 0 && createMode === 'none' && (
               <p className="text-center text-[var(--muted)] py-12 text-sm">
                 No talks yet. Tap + to create your first.
               </p>
@@ -106,7 +152,8 @@ export default function LibraryPage() {
                 </button>
               </div>
             ))}
-            {showNewTalk && (
+
+            {createMode === 'new' && (
               <form onSubmit={handleCreateTalk} className="flex gap-2">
                 <input
                   autoFocus
@@ -123,12 +170,20 @@ export default function LibraryPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowNewTalk(false)}
+                  onClick={() => setCreateMode('none')}
                   className="text-[var(--muted)] px-3 py-3 text-sm"
                 >
                   Cancel
                 </button>
               </form>
+            )}
+
+            {createMode === 'import' && importing && (
+              <p className="text-center text-[var(--muted)] py-4 text-sm">Importing...</p>
+            )}
+
+            {importError && (
+              <p className="text-center text-red-400 py-2 text-sm">{importError}</p>
             )}
           </>
         )}
@@ -138,7 +193,7 @@ export default function LibraryPage() {
             {sets === undefined && (
               <p className="text-center text-[var(--muted)] py-8">Loading...</p>
             )}
-            {sets?.length === 0 && !showNewSet && (
+            {sets?.length === 0 && createMode === 'none' && (
               <p className="text-center text-[var(--muted)] py-12 text-sm">
                 No sets yet. Group talks for an event.
               </p>
@@ -162,7 +217,7 @@ export default function LibraryPage() {
                 </p>
               </div>
             ))}
-            {showNewSet && (
+            {createMode === 'set' && (
               <form onSubmit={handleCreateSet} className="flex gap-2">
                 <input
                   autoFocus
@@ -179,7 +234,7 @@ export default function LibraryPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowNewSet(false)}
+                  onClick={() => setCreateMode('none')}
                   className="text-[var(--muted)] px-3 py-3 text-sm"
                 >
                   Cancel
@@ -190,19 +245,54 @@ export default function LibraryPage() {
         )}
       </main>
 
-      {/* FAB */}
-      <div className="fixed bottom-6 right-5 pb-safe-bottom">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".docx,.pdf"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* FAB overlay */}
+      {fabOpen && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={closeFab}
+        />
+      )}
+
+      {/* FAB menu */}
+      <div className="fixed bottom-6 right-5 z-20 flex flex-col items-end gap-3">
+        {fabOpen && tab === 'talks' && (
+          <>
+            <button
+              onClick={openImport}
+              className="flex items-center gap-3 bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)] rounded-2xl px-4 py-3 text-sm font-medium shadow-lg whitespace-nowrap"
+            >
+              Import file
+              <span className="text-[var(--muted)] text-xs">.docx / .pdf</span>
+            </button>
+            <button
+              onClick={openNew}
+              className="flex items-center gap-3 bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)] rounded-2xl px-4 py-3 text-sm font-medium shadow-lg"
+            >
+              New talk
+            </button>
+          </>
+        )}
+
         <button
           onClick={() => {
-            if (tab === 'talks') {
-              setShowNewTalk(true);
-              setShowNewSet(false);
+            if (tab === 'sets') {
+              openNew();
             } else {
-              setShowNewSet(true);
-              setShowNewTalk(false);
+              setFabOpen((v) => !v);
             }
           }}
-          className="w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+          className={`w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg transition-transform ${
+            fabOpen ? 'rotate-45' : ''
+          } active:scale-95`}
         >
           +
         </button>

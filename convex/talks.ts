@@ -33,6 +33,17 @@ export const create = mutation({
   },
 });
 
+export const createWithSegments = mutation({
+  args: {
+    userId: v.string(),
+    title: v.string(),
+    segments: v.array(v.object({ id: v.string(), text: v.string() })),
+  },
+  handler: async (ctx, { userId, title, segments }) => {
+    return await ctx.db.insert('talks', { userId, title, segments });
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id('talks'), userId: v.string() },
   handler: async (ctx, { id, userId }) => {
