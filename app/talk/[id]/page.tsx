@@ -45,7 +45,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           href={`/talk/${id}/read`}
           className="text-sm text-[var(--primary)] font-medium w-12 text-right"
         >
-          Read
+          Aloud
         </a>
       </header>
 
