@@ -21,6 +21,15 @@ export default defineSchema({
         tempo: v.optional(v.number()),
         /** Whether this segment has emphasis */
         emphasis: v.optional(v.boolean()),
+        /** Word-level SSML brick sequence; if present, used instead of text for TTS */
+        elements: v.optional(v.array(v.union(
+          v.object({ type: v.literal('word'), text: v.string() }),
+          v.object({ type: v.literal('emphasis-open') }),
+          v.object({ type: v.literal('emphasis-close') }),
+          v.object({ type: v.literal('prosody-open'), rate: v.number() }),
+          v.object({ type: v.literal('prosody-close') }),
+          v.object({ type: v.literal('break'), ms: v.number() }),
+        ))),
       })
     ),
     /** ElevenLabs voice ID */
@@ -42,6 +51,14 @@ export default defineSchema({
         text: v.string(),
         tempo: v.optional(v.number()),
         emphasis: v.optional(v.boolean()),
+        elements: v.optional(v.array(v.union(
+          v.object({ type: v.literal('word'), text: v.string() }),
+          v.object({ type: v.literal('emphasis-open') }),
+          v.object({ type: v.literal('emphasis-close') }),
+          v.object({ type: v.literal('prosody-open'), rate: v.number() }),
+          v.object({ type: v.literal('prosody-close') }),
+          v.object({ type: v.literal('break'), ms: v.number() }),
+        ))),
       })
     ),
   }).index('by_talk', ['talkId']),
