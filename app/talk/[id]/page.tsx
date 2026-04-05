@@ -6,6 +6,7 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getCachedAudio, setCachedAudio } from '@/lib/audioStore';
+import { buildSSML, SegmentElement } from '@/lib/ssml';
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM';
 
@@ -46,12 +47,12 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     async function prepare() {
       // Phase 1: read everything from IDB in parallel
       const idbResults = await Promise.all(
-        segments.map(async (seg, i) => ({
-          i,
-          seg,
-          key: `${id}:${seg.text}`,
-          blob: await getCachedAudio(`${id}:${seg.text}`),
-        }))
+        segments.map(async (seg, i) => {
+          const cacheKey = seg.elements
+            ? `${id}:elements:${JSON.stringify(seg.elements)}`
+            : `${id}:${seg.text}`;
+          return { i, seg, key: cacheKey, blob: await getCachedAudio(cacheKey) };
+        })
       );
 
       if (signal.aborted) return;
@@ -80,11 +81,14 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       await Promise.all(
         misses.map(async ({ i, key, seg }) => {
           try {
+            const ttsText = seg.elements
+              ? buildSSML(seg.elements as SegmentElement[])
+              : seg.text;
             const res = await fetch(TTS_URL, {
               method: 'POST',
               headers: { 'xi-api-key': apiKey!, 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                text: seg.text,
+                text: ttsText,
                 model_id: 'eleven_flash_v2_5',
                 voice_settings: { stability: 0.5, similarity_boost: 0.75 },
               }),

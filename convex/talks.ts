@@ -111,6 +111,30 @@ export const getVersions = query({
   },
 });
 
+export const saveSegmentElements = mutation({
+  args: {
+    id: v.id('talks'),
+    userId: v.string(),
+    segmentId: v.string(),
+    elements: v.array(v.union(
+      v.object({ type: v.literal('word'), text: v.string() }),
+      v.object({ type: v.literal('emphasis-open') }),
+      v.object({ type: v.literal('emphasis-close') }),
+      v.object({ type: v.literal('prosody-open'), rate: v.number() }),
+      v.object({ type: v.literal('prosody-close') }),
+      v.object({ type: v.literal('break'), ms: v.number() }),
+    )),
+  },
+  handler: async (ctx, { id, userId, segmentId, elements }) => {
+    const talk = await ctx.db.get(id);
+    if (!talk || talk.userId !== userId) throw new Error('Not found');
+    const segments = talk.segments.map((s) =>
+      s.id === segmentId ? { ...s, elements } : s
+    );
+    await ctx.db.patch(id, { segments });
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id('talks'), userId: v.string() },
   handler: async (ctx, { id, userId }) => {
