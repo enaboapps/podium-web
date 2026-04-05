@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { diffWords } from 'diff';
 import { api } from '@/convex/_generated/api';
@@ -186,7 +186,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
 }
 
 function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
-  const parts = diffWords(oldText, newText);
+  const parts = useMemo(() => diffWords(oldText, newText), [oldText, newText]);
 
   return (
     <p className="text-sm leading-relaxed whitespace-pre-wrap">
