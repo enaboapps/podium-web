@@ -79,7 +79,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
             const ttsText = seg.elements
               ? buildTTSText(seg.elements as SegmentElement[])
               : seg.text;
-            const blob = await fetchTTSBlob(ttsText, apiKey!, signal);
+            const blob = await fetchTTSBlob(ttsText, apiKey!, settings?.voiceId, signal);
             if (signal.aborted) return;
             await setCachedAudio(key, blob);
             audioUrls.current.set(i, URL.createObjectURL(blob));

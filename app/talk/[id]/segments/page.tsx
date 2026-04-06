@@ -124,11 +124,13 @@ function SegmentBrickEditor({
   segmentId,
   initialElements,
   apiKey,
+  voiceId,
   onSave,
 }: {
   segmentId: string;
   initialElements: SegmentElement[];
   apiKey: string | undefined;
+  voiceId: string | undefined;
   onSave: (segmentId: string, elements: SegmentElement[]) => Promise<void>;
 }) {
   const [elements, setElements] = useState<SegmentElement[]>(initialElements);
@@ -199,7 +201,7 @@ function SegmentBrickEditor({
     setTesting(true);
     try {
       const ttsText = buildTTSText(elements);
-      const blob = await fetchTTSBlob(ttsText, apiKey);
+      const blob = await fetchTTSBlob(ttsText, apiKey, voiceId);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.onended = () => { URL.revokeObjectURL(url); setTesting(false); };
@@ -321,6 +323,7 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
   const saveSegmentElements = useMutation(api.talks.saveSegmentElements);
 
   const apiKey = settings?.elevenLabsApiKey;
+  const voiceId = settings?.voiceId;
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -392,6 +395,7 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
                     segmentId={seg.id}
                     initialElements={initialElements}
                     apiKey={apiKey}
+                    voiceId={voiceId}
                     onSave={handleSave}
                   />
                 </div>
