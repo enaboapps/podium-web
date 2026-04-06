@@ -46,6 +46,18 @@ export const saveApiKey = mutation({
   },
 });
 
+export const saveVoiceId = mutation({
+  args: { clerkId: v.string(), voiceId: v.string() },
+  handler: async (ctx, { clerkId, voiceId }) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
+      .unique();
+    if (!user) throw new Error('User not found');
+    await ctx.db.patch(user._id, { voiceId });
+  },
+});
+
 export const clearApiKey = mutation({
   args: { clerkId: v.string() },
   handler: async (ctx, { clerkId }) => {
