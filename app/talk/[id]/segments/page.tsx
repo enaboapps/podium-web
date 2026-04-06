@@ -23,21 +23,54 @@ import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { SegmentElement, tokenise } from '@/lib/ssml';
+import { SegmentElement, buildTTSText, tokenise } from '@/lib/ssml';
+import { fetchTTSBlob } from '@/lib/tts';
 
-type TagType = 'emphasis' | 'prosody-slow' | 'prosody-fast' | 'break';
-
-const TAG_LABELS: Record<TagType, string> = {
-  emphasis: '▶ emphasis',
-  'prosody-slow': '▶ slow',
-  'prosody-fast': '▶ fast',
-  break: '⏸ pause',
-};
-
-const TAG_CLOSE_LABELS: Record<string, string> = {
-  'emphasis-open': '◀ emphasis',
-  'prosody-open': '◀ speed',
-};
+const PALETTE: { group: string; items: { label: string; el: SegmentElement }[] }[] = [
+  {
+    group: 'Pace',
+    items: [
+      { label: 'rushed', el: { type: 'tag', value: 'rushed' } },
+      { label: 'slows down', el: { type: 'tag', value: 'slows down' } },
+      { label: 'deliberate', el: { type: 'tag', value: 'deliberate' } },
+    ],
+  },
+  {
+    group: 'Pause',
+    items: [
+      { label: 'short pause', el: { type: 'break', ms: 250 } },
+      { label: 'pause', el: { type: 'break', ms: 500 } },
+      { label: 'long pause', el: { type: 'break', ms: 1000 } },
+      { label: 'dramatic pause', el: { type: 'break', ms: 1500 } },
+    ],
+  },
+  {
+    group: 'Delivery',
+    items: [
+      { label: 'emphasized', el: { type: 'tag', value: 'emphasized' } },
+      { label: 'whispers', el: { type: 'tag', value: 'whispers' } },
+      { label: 'firm', el: { type: 'tag', value: 'firm' } },
+      { label: 'soft', el: { type: 'tag', value: 'soft' } },
+    ],
+  },
+  {
+    group: 'Emotion',
+    items: [
+      { label: 'excited', el: { type: 'tag', value: 'excited' } },
+      { label: 'calm', el: { type: 'tag', value: 'calm' } },
+      { label: 'sad', el: { type: 'tag', value: 'sad' } },
+      { label: 'angry', el: { type: 'tag', value: 'angry' } },
+    ],
+  },
+  {
+    group: 'Non-verbal',
+    items: [
+      { label: 'sighs', el: { type: 'tag', value: 'sighs' } },
+      { label: 'laughs', el: { type: 'tag', value: 'laughs' } },
+      { label: 'clears throat', el: { type: 'tag', value: 'clears throat' } },
+    ],
+  },
+];
 
 function elementId(el: SegmentElement, idx: number): string {
   return `el-${idx}-${el.type}`;
@@ -45,24 +78,25 @@ function elementId(el: SegmentElement, idx: number): string {
 
 function elementLabel(el: SegmentElement): string {
   if (el.type === 'word') return el.text;
-  if (el.type === 'emphasis-open') return '▶ emphasis';
+  if (el.type === 'tag') return `[${el.value}]`;
+  if (el.type === 'emphasis-open') return '[emphasized]';
   if (el.type === 'emphasis-close') return '◀ emphasis';
-  if (el.type === 'prosody-open') return el.rate < 1 ? '▶ slow' : '▶ fast';
+  if (el.type === 'prosody-open') return el.rate < 1 ? '[slows down]' : '[rushed]';
   if (el.type === 'prosody-close') return '◀ speed';
-  if (el.type === 'break') return '⏸ pause';
+  if (el.type === 'break') {
+    if (el.ms <= 300) return '[short pause]';
+    if (el.ms <= 750) return '[pause]';
+    if (el.ms <= 1250) return '[long pause]';
+    return '[dramatic pause]';
+  }
   return '';
 }
 
 function elementStyle(el: SegmentElement): string {
   const base = 'px-2 py-1 rounded-lg text-xs font-medium select-none cursor-grab active:cursor-grabbing';
   if (el.type === 'word') return `${base} bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)]`;
-  if (el.type === 'emphasis-open' || el.type === 'emphasis-close')
-    return `${base} bg-yellow-900/40 border border-yellow-600/50 text-yellow-300`;
-  if (el.type === 'prosody-open' || el.type === 'prosody-close')
-    return `${base} bg-blue-900/40 border border-blue-600/50 text-blue-300`;
-  if (el.type === 'break')
-    return `${base} bg-purple-900/40 border border-purple-600/50 text-purple-300`;
-  return base;
+  if (el.type === 'break') return `${base} bg-purple-900/40 border border-purple-600/50 text-purple-300`;
+  return `${base} bg-teal-900/40 border border-teal-600/50 text-teal-300`;
 }
 
 function SortableBrick({ id, el }: { id: string; el: SegmentElement }) {
@@ -80,22 +114,56 @@ function SortableBrick({ id, el }: { id: string; el: SegmentElement }) {
   );
 }
 
+const CHAR_LIMIT = 500;
+const MAX_NON_WORD = 3;
+const MAX_PAUSES = 2;
+const PACE_TAGS = new Set(['rushed', 'slows down', 'deliberate']);
+const EMOTION_TAGS = new Set(['excited', 'calm', 'sad', 'angry']);
+
 function SegmentBrickEditor({
   segmentId,
   initialElements,
+  apiKey,
   onSave,
 }: {
   segmentId: string;
   initialElements: SegmentElement[];
+  apiKey: string | undefined;
   onSave: (segmentId: string, elements: SegmentElement[]) => Promise<void>;
 }) {
   const [elements, setElements] = useState<SegmentElement[]>(initialElements);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const ids = elements.map((el, i) => elementId(el, i));
   const activeEl = activeId ? elements[ids.indexOf(activeId)] : null;
+
+  // Validation
+  const ttsText = buildTTSText(elements);
+  const charCount = ttsText.length;
+  const nonWordCount = elements.filter((e) => e.type !== 'word').length;
+  const pauseCount = elements.filter((e) => e.type === 'break').length;
+  const hasPaceTag = elements.some((e) => e.type === 'tag' && PACE_TAGS.has(e.value));
+  const hasEmotionTag = elements.some((e) => e.type === 'tag' && EMOTION_TAGS.has(e.value));
+  const hasConsecutiveTags = elements.some(
+    (el, i) => i > 0 && el.type !== 'word' && elements[i - 1].type !== 'word'
+  );
+
+  const validationErrors: string[] = [];
+  if (charCount > CHAR_LIMIT) validationErrors.push(`Exceeds ${CHAR_LIMIT} character limit (${charCount})`);
+  if (hasConsecutiveTags) validationErrors.push('Tags must have a word between them');
+
+  const isValid = validationErrors.length === 0;
+
+  function canAddEl(el: SegmentElement): boolean {
+    if (nonWordCount >= MAX_NON_WORD) return false;
+    if (el.type === 'break' && pauseCount >= MAX_PAUSES) return false;
+    if (el.type === 'tag' && PACE_TAGS.has(el.value) && hasPaceTag) return false;
+    if (el.type === 'tag' && EMOTION_TAGS.has(el.value) && hasEmotionTag) return false;
+    return true;
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -116,24 +184,30 @@ function SegmentBrickEditor({
     setSaved(false);
   }
 
-  function addTag(type: TagType) {
-    const newEls: SegmentElement[] = [...elements];
-    if (type === 'emphasis') {
-      newEls.push({ type: 'emphasis-open' }, { type: 'emphasis-close' });
-    } else if (type === 'prosody-slow') {
-      newEls.push({ type: 'prosody-open', rate: 0.75 }, { type: 'prosody-close' });
-    } else if (type === 'prosody-fast') {
-      newEls.push({ type: 'prosody-open', rate: 1.25 }, { type: 'prosody-close' });
-    } else if (type === 'break') {
-      newEls.push({ type: 'break', ms: 500 });
-    }
-    setElements(newEls);
+  function addEl(el: SegmentElement) {
+    setElements((els) => [...els, el]);
     setSaved(false);
   }
 
   function removeBrick(idx: number) {
     setElements((els) => els.filter((_, i) => i !== idx));
     setSaved(false);
+  }
+
+  async function handleTest() {
+    if (!apiKey || testing) return;
+    setTesting(true);
+    try {
+      const ttsText = buildTTSText(elements);
+      const blob = await fetchTTSBlob(ttsText, apiKey);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => { URL.revokeObjectURL(url); setTesting(false); };
+      audio.onerror = () => setTesting(false);
+      await audio.play();
+    } catch {
+      setTesting(false);
+    }
   }
 
   async function handleSave() {
@@ -180,26 +254,60 @@ function SegmentBrickEditor({
       </DndContext>
 
       {/* Tag palette */}
-      <div className="flex flex-wrap gap-1.5">
-        {(['emphasis', 'prosody-slow', 'prosody-fast', 'break'] as TagType[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => addTag(t)}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          >
-            + {TAG_LABELS[t]}
-          </button>
+      <div className="space-y-2">
+        {PALETTE.map(({ group, items }) => (
+          <div key={group}>
+            <p className="text-[10px] text-[var(--muted)] uppercase tracking-wide mb-1">{group}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {items.map(({ label, el }) => {
+                const disabled = !canAddEl(el);
+                return (
+                  <button
+                    key={label}
+                    onClick={() => addEl(el)}
+                    disabled={disabled}
+                    className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    + {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </div>
 
-      {/* Save */}
-      <button
-        onClick={handleSave}
-        disabled={saving || saved}
-        className="text-xs font-semibold text-[var(--primary)] disabled:opacity-40"
-      >
-        {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
-      </button>
+      {/* Validation errors */}
+      {validationErrors.length > 0 && (
+        <div className="space-y-0.5">
+          {validationErrors.map((err) => (
+            <p key={err} className="text-xs text-red-400">{err}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleTest}
+            disabled={!apiKey || testing || !isValid}
+            className="text-xs font-semibold text-[var(--muted)] disabled:opacity-40"
+          >
+            {testing ? 'Playing…' : '▶ Test'}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || saved || !isValid}
+            className="text-xs font-semibold text-[var(--primary)] disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
+          </button>
+        </div>
+        <p className={`text-[10px] tabular-nums ${charCount > CHAR_LIMIT ? 'text-red-400' : 'text-[var(--muted)]'}`}>
+          {charCount} / {CHAR_LIMIT}
+        </p>
+      </div>
     </div>
   );
 }
@@ -209,7 +317,10 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
   const { clerkId } = useCurrentUser();
 
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
+  const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
   const saveSegmentElements = useMutation(api.talks.saveSegmentElements);
+
+  const apiKey = settings?.elevenLabsApiKey;
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -280,6 +391,7 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
                     key={seg.id}
                     segmentId={seg.id}
                     initialElements={initialElements}
+                    apiKey={apiKey}
                     onSave={handleSave}
                   />
                 </div>
