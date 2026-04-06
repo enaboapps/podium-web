@@ -4,34 +4,45 @@ export type SegmentElement =
   | { type: 'emphasis-close' }
   | { type: 'prosody-open'; rate: number }
   | { type: 'prosody-close' }
-  | { type: 'break'; ms: number };
+  | { type: 'break'; ms: number }
+  | { type: 'tag'; value: string };
 
-/** Build an SSML string from a brick element array. */
-export function buildSSML(elements: SegmentElement[]): string {
-  let inner = '';
+function breakTag(ms: number): string {
+  if (ms <= 300) return '[short pause]';
+  if (ms <= 750) return '[pause]';
+  return '[long pause]';
+}
+
+/**
+ * Build a text string with ElevenLabs v3 audio tags from a brick element array.
+ * Close tags (emphasis-close, prosody-close) output nothing — v3 tags are directional,
+ * not paired wrappers.
+ */
+export function buildTTSText(elements: SegmentElement[]): string {
+  let out = '';
   for (const el of elements) {
     switch (el.type) {
       case 'word':
-        inner += el.text + ' ';
+        out += el.text + ' ';
         break;
       case 'emphasis-open':
-        inner += '<emphasis level="strong">';
-        break;
-      case 'emphasis-close':
-        inner += '</emphasis>';
+        out += '[emphasized] ';
         break;
       case 'prosody-open':
-        inner += `<prosody rate="${el.rate}">`;
-        break;
-      case 'prosody-close':
-        inner += '</prosody>';
+        out += el.rate < 1 ? '[slows down] ' : '[rushed] ';
         break;
       case 'break':
-        inner += `<break time="${el.ms}ms"/>`;
+        out += breakTag(el.ms) + ' ';
+        break;
+      case 'tag':
+        out += `[${el.value}] `;
+        break;
+      case 'emphasis-close':
+      case 'prosody-close':
         break;
     }
   }
-  return `<speak>${inner.trimEnd()}</speak>`;
+  return out.trimEnd();
 }
 
 /** Tokenise plain text into word elements. */

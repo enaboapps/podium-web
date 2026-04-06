@@ -6,9 +6,8 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getCachedAudio, setCachedAudio } from '@/lib/audioStore';
-import { buildSSML, SegmentElement } from '@/lib/ssml';
-
-const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM';
+import { buildTTSText, SegmentElement } from '@/lib/ssml';
+import { fetchTTSBlob } from '@/lib/tts';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -23,7 +22,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Audio cache
+  // Pre-cache all segments into IndexedDB
   const audioUrls = useRef<Map<number, string>>(new Map());
   const [cacheLoaded, setCacheLoaded] = useState(0);
   const [cacheReady, setCacheReady] = useState(false);
@@ -37,7 +36,6 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
 
-  // Pre-cache all segments into IndexedDB
   useEffect(() => {
     if (!apiKey || segments.length === 0) return;
 
@@ -49,7 +47,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       const idbResults = await Promise.all(
         segments.map(async (seg, i) => {
           const cacheKey = seg.elements
-            ? `${id}:elements:${JSON.stringify(seg.elements)}`
+            ? `${id}:v3:${JSON.stringify(seg.elements)}`
             : `${id}:${seg.text}`;
           return { i, seg, key: cacheKey, blob: await getCachedAudio(cacheKey) };
         })
@@ -60,12 +58,10 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       const hits = idbResults.filter((r) => r.blob);
       const misses = idbResults.filter((r) => !r.blob);
 
-      // Load cached blobs immediately
       hits.forEach(({ i, blob }) => {
         audioUrls.current.set(i, URL.createObjectURL(blob!));
       });
 
-      // If everything was cached, we're done — no loading screen needed
       if (misses.length === 0) {
         setCacheLoaded(segments.length);
         setCacheReady(true);
@@ -73,7 +69,6 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         return;
       }
 
-      // Some segments need network — show loading screen
       setCacheLoaded(hits.length);
       setCacheChecked(true);
 
@@ -82,20 +77,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         misses.map(async ({ i, key, seg }) => {
           try {
             const ttsText = seg.elements
-              ? buildSSML(seg.elements as SegmentElement[])
+              ? buildTTSText(seg.elements as SegmentElement[])
               : seg.text;
-            const res = await fetch(TTS_URL, {
-              method: 'POST',
-              headers: { 'xi-api-key': apiKey!, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                text: ttsText,
-                model_id: 'eleven_flash_v2_5',
-                voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-              }),
-              signal,
-            });
-            if (!res.ok) throw new Error('TTS failed');
-            const blob = await res.blob();
+            const blob = await fetchTTSBlob(ttsText, apiKey!, signal);
             if (signal.aborted) return;
             await setCachedAudio(key, blob);
             audioUrls.current.set(i, URL.createObjectURL(blob));
