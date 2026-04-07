@@ -58,9 +58,10 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     async function prepare() {
       const idbResults = await Promise.all(
         segments.map(async (seg, i) => {
+          const voiceKey = `${ttsConfig!.provider}:${ttsConfig!.voiceId ?? 'default'}`;
           const cacheKey = seg.elements
-            ? `${id}:ssml:${JSON.stringify(seg.elements)}`
-            : `${id}:${seg.text}`;
+            ? `${voiceKey}:${id}:ssml:${JSON.stringify(seg.elements)}`
+            : `${voiceKey}:${id}:${seg.text}`;
           return { i, seg, key: cacheKey, blob: await getCachedAudio(cacheKey) };
         })
       );
