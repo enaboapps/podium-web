@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Lora } from 'next/font/google';
 import './globals.css';
 import ClientLayout from './ClientLayout';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const lora = Lora({ subsets: ['latin'], variable: '--font-display' });
 
 export const metadata: Metadata = {
   title: 'Podium',
@@ -26,7 +27,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#0f172a" />
         <link rel="manifest" href="/manifest.json" />
       </head>
-      <body className={`${inter.className} bg-background text-foreground antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${lora.variable} font-sans bg-background text-foreground antialiased`} suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

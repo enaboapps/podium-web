@@ -130,7 +130,7 @@ export default function LibraryPage() {
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)]">
-        <h1 className="text-xl font-semibold tracking-tight">Podium</h1>
+        <h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Podium</h1>
         <a href="/settings" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
           Settings
         </a>
@@ -162,7 +162,7 @@ export default function LibraryPage() {
               <p className="text-center text-[var(--muted)] py-12 text-sm">No talks yet. Tap + to create your first.</p>
             )}
             {talks?.map((talk: Doc<'talks'>) => (
-              <div key={talk._id} className="flex items-center justify-between bg-[var(--surface)] rounded-xl px-4 py-4 gap-3">
+              <div key={talk._id} className="flex items-center justify-between bg-[var(--surface)] hover:bg-[var(--surface-hover)] rounded-xl px-4 py-4 gap-3 transition-colors">
                 <a href={`/talk/${talk._id}`} className="flex-1 font-medium text-[var(--foreground)] truncate">
                   {talk.title}
                 </a>
@@ -223,7 +223,7 @@ export default function LibraryPage() {
               <p className="text-center text-[var(--muted)] py-12 text-sm">No sets yet. Group talks for an event.</p>
             )}
             {sets?.map((set: Doc<'talkSets'>) => (
-              <div key={set._id} className="bg-[var(--surface)] rounded-xl px-4 py-4">
+              <div key={set._id} className="bg-[var(--surface)] hover:bg-[var(--surface-hover)] rounded-xl px-4 py-4 transition-colors">
                 <div className="flex items-center justify-between">
                   <a href={`/set/${set._id}`} className="flex-1 font-medium text-[var(--foreground)]">{set.title}</a>
                   {confirmDeleteId === set._id ? (
