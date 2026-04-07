@@ -93,6 +93,7 @@ function SegmentBrickEditor({
 }) {
   const [annotations,   setAnnotations]   = useState(initialAnnotations);
   const [activeMode,    setActiveMode]    = useState<EditorMode | null>(null);
+  const [anchorId,      setAnchorId]      = useState<string | null>(null);
   const [pausePickerId, setPausePickerId] = useState<string | null>(null);
   const [playState,     setPlayState]     = useState<PlayState>('idle');
   const [playError,     setPlayError]     = useState<string | null>(null);
@@ -103,6 +104,7 @@ function SegmentBrickEditor({
 
   function toggleMode(mode: EditorMode) {
     setPausePickerId(null);
+    setAnchorId(null);
     setActiveMode(prev => prev === mode ? null : mode);
   }
 
@@ -114,13 +116,12 @@ function SegmentBrickEditor({
   function handleWordTap(ann: WordAnnotation) {
     if (!activeMode) return;
 
+    // Pause: single-word only, no range
     if (activeMode === 'pause') {
       if (ann.pauseAfterMs !== null) {
-        // Remove existing pause
         setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: null } : a));
         if (pausePickerId === ann.id) setPausePickerId(null);
       } else {
-        // Add default pause then open picker to refine duration
         setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: 500 } : a));
         setPausePickerId(ann.id);
         setActiveMode(null);
@@ -129,17 +130,29 @@ function SegmentBrickEditor({
       return;
     }
 
-    setAnnotations(prev => prev.map(a => {
-      if (a.id !== ann.id) return a;
+    // Range-picker: first tap sets anchor, second tap applies over range
+    if (anchorId === null) {
+      setAnchorId(ann.id);
+      return;
+    }
+
+    const anchorIdx = annotations.findIndex(a => a.id === anchorId);
+    const tapIdx    = annotations.findIndex(a => a.id === ann.id);
+    const lo = Math.min(anchorIdx, tapIdx);
+    const hi = Math.max(anchorIdx, tapIdx);
+
+    setAnnotations(prev => prev.map((a, i) => {
+      if (i < lo || i > hi) return a;
       switch (activeMode) {
-        case 'emphasis': return { ...a, emphasis: !a.emphasis };
-        case 'slow':     return { ...a, rate: (a.rate !== null && a.rate < 1)  ? null : 0.7 };
-        case 'fast':     return { ...a, rate: (a.rate !== null && a.rate >= 1) ? null : 1.4 };
-        case 'sayAs':    return { ...a, sayAs: a.sayAs ? null : 'characters' };
+        case 'emphasis': return { ...a, emphasis: true };
+        case 'slow':     return { ...a, rate: 0.7 };
+        case 'fast':     return { ...a, rate: 1.4 };
+        case 'sayAs':    return { ...a, sayAs: 'characters' };
         case 'clear':    return { ...a, emphasis: false, rate: null, sayAs: null };
         default:         return a;
       }
     }));
+    setAnchorId(null);
     markDirty();
   }
 
@@ -206,7 +219,7 @@ function SegmentBrickEditor({
 
   return (
     <div>
-      {/* Mode strip — OR pause duration picker when editing a pause */}
+      {/* Mode strip — OR range-anchor hint — OR pause duration picker */}
       <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto border-b border-[var(--border)] bg-[var(--background)]/60">
         {pausePickerAnn ? (
           <>
@@ -238,6 +251,17 @@ function SegmentBrickEditor({
               ✕
             </button>
           </>
+        ) : anchorId ? (
+          <>
+            <span className="text-sm text-[var(--foreground)] shrink-0">Now tap the last word in the range</span>
+            <div className="flex-1" />
+            <button
+              onClick={() => setAnchorId(null)}
+              className="h-10 px-3 text-sm text-[var(--muted)] shrink-0"
+            >
+              ✕ Cancel
+            </button>
+          </>
         ) : (
           MODES.map(({ key, label, off, on }) => (
             <button
@@ -260,7 +284,11 @@ function SegmentBrickEditor({
             <button
               onClick={() => handleWordTap(ann)}
               disabled={!activeMode}
-              className={wordChipClass(ann, !!activeMode) + (!activeMode ? ' cursor-default' : '')}
+              className={
+                wordChipClass(ann, !!activeMode) +
+                (!activeMode ? ' cursor-default' : '') +
+                (ann.id === anchorId ? ' ring-2 ring-white ring-offset-1 ring-offset-[var(--background)] animate-pulse' : '')
+              }
             >
               {ann.text}
             </button>
@@ -375,10 +403,10 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
       ) : (
         <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           <p className="text-xs text-[var(--muted)] px-1">
-            Expand a segment, pick a mode, then tap words to apply it.
+            Pick a mode, then tap the first word in the range.
           </p>
 
-          {talk!.segments.map((seg) => {
+          {talk!.segments.filter(seg => !expandedId || seg.id === expandedId).map((seg) => {
             const isExpanded = expandedId === seg.id;
             const dots = effectDots(seg.elements as SegmentElement[] | undefined);
             const initialAnnotations: WordAnnotation[] = seg.elements?.length
