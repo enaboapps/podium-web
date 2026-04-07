@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Doc } from '@/convex/_generated/dataModel';
 import { parseFile, splitIntoSentences, joinFullText } from '@/lib/parseFile';
+import { getLastLibraryUserId, getLibrarySnapshot, saveLibrarySnapshot } from '@/lib/libraryStore';
 
 const PREVIEW_CAP = 100;
 
@@ -33,6 +34,9 @@ export default function LibraryPage() {
   const [importing, setImporting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [assignTalkId, setAssignTalkId] = useState<string | null>(null);
+  const [offlineTalks, setOfflineTalks] = useState<Array<Pick<Doc<'talks'>, '_id' | 'title'>> | null>(null);
+  const [offlineSets, setOfflineSets] = useState<Array<Pick<Doc<'talkSets'>, '_id' | 'title' | 'talkIds'>> | null>(null);
+  const [showOfflineLibrary, setShowOfflineLibrary] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -53,6 +57,46 @@ export default function LibraryPage() {
       ? splitIntoSentences(importDraft.paragraphs)
       : importDraft.paragraphs;
   }, [importDraft]);
+
+  useEffect(() => {
+    if (!clerkId || !talks || !sets) return;
+
+    saveLibrarySnapshot(
+      clerkId,
+      talks.map((talk) => ({ _id: talk._id, title: talk.title })),
+      sets.map((set) => ({ _id: set._id, title: set.title, talkIds: set.talkIds }))
+    );
+  }, [clerkId, talks, sets]);
+
+  useEffect(() => {
+    if (talks !== undefined && sets !== undefined) {
+      setShowOfflineLibrary(false);
+      return;
+    }
+
+    let cancelled = false;
+    const delay = typeof navigator !== 'undefined' && navigator.onLine ? 1500 : 100;
+    const timer = setTimeout(async () => {
+      const userId = clerkId ?? await getLastLibraryUserId();
+      if (!userId) return;
+
+      const snapshot = await getLibrarySnapshot(userId);
+      if (!snapshot || cancelled) return;
+
+      setOfflineTalks(snapshot.talks);
+      setOfflineSets(snapshot.sets);
+      setShowOfflineLibrary(true);
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [clerkId, talks, sets]);
+
+  const effectiveTalks = talks ?? offlineTalks ?? undefined;
+  const effectiveSets = sets ?? offlineSets ?? undefined;
+  const offlineReadOnly = showOfflineLibrary && (talks === undefined || sets === undefined);
 
   function closeFab() { setFabOpen(false); }
 
@@ -155,19 +199,25 @@ export default function LibraryPage() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-24">
+        {offlineReadOnly && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+            <p className="text-sm text-[var(--muted)]">Showing your last synced library. Changes are unavailable offline.</p>
+          </div>
+        )}
+
         {tab === 'talks' && (
           <>
-            {talks === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
-            {talks?.length === 0 && createMode === 'none' && (
+            {effectiveTalks === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
+            {effectiveTalks?.length === 0 && createMode === 'none' && (
               <p className="text-center text-[var(--muted)] py-12 text-sm">No talks yet. Tap + to create your first.</p>
             )}
-            {talks?.map((talk: Doc<'talks'>) => (
+            {effectiveTalks?.map((talk) => (
               <div key={talk._id} className="flex items-center justify-between bg-[var(--surface)] hover:bg-[var(--surface-hover)] rounded-xl px-4 py-4 gap-3 transition-colors">
                 <a href={`/talk/${talk._id}`} className="flex-1 font-medium text-[var(--foreground)] truncate">
                   {talk.title}
                 </a>
                 <div className="flex items-center gap-1 shrink-0">
-                  {sets && sets.length > 0 && (
+                  {!offlineReadOnly && effectiveSets && effectiveSets.length > 0 && (
                     <button
                       onClick={() => setAssignTalkId(talk._id)}
                       className="text-[var(--muted)] hover:text-[var(--primary)] text-lg px-2 py-1 rounded transition-colors leading-none"
@@ -176,7 +226,7 @@ export default function LibraryPage() {
                       ⊕
                     </button>
                   )}
-                  {confirmDeleteId === talk._id ? (
+                  {!offlineReadOnly && confirmDeleteId === talk._id ? (
                     <>
                       <button
                         onClick={() => { clerkId && removeTalk({ id: talk._id as Id<'talks'>, userId: clerkId }); setConfirmDeleteId(null); }}
@@ -188,18 +238,21 @@ export default function LibraryPage() {
                         Cancel
                       </button>
                     </>
-                  ) : (
+                  ) : !offlineReadOnly ? (
                     <button
                       onClick={() => setConfirmDeleteId(talk._id)}
                       className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
                     >
                       Delete
                     </button>
-                  )}
+                  ) : null}
+                  {offlineReadOnly ? (
+                    <span className="text-xs text-[var(--muted)]">Offline</span>
+                  ) : null}
                 </div>
               </div>
             ))}
-            {createMode === 'new' && (
+            {createMode === 'new' && !offlineReadOnly && (
               <form onSubmit={handleCreateTalk} className="flex gap-2">
                 <input
                   autoFocus
@@ -218,15 +271,15 @@ export default function LibraryPage() {
 
         {tab === 'sets' && (
           <>
-            {sets === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
-            {sets?.length === 0 && createMode === 'none' && (
+            {effectiveSets === undefined && <p className="text-center text-[var(--muted)] py-8">Loading...</p>}
+            {effectiveSets?.length === 0 && createMode === 'none' && (
               <p className="text-center text-[var(--muted)] py-12 text-sm">No sets yet. Group talks for an event.</p>
             )}
-            {sets?.map((set: Doc<'talkSets'>) => (
+            {effectiveSets?.map((set) => (
               <div key={set._id} className="bg-[var(--surface)] hover:bg-[var(--surface-hover)] rounded-xl px-4 py-4 transition-colors">
                 <div className="flex items-center justify-between">
                   <a href={`/set/${set._id}`} className="flex-1 font-medium text-[var(--foreground)]">{set.title}</a>
-                  {confirmDeleteId === set._id ? (
+                  {!offlineReadOnly && confirmDeleteId === set._id ? (
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => { clerkId && removeSet({ id: set._id as Id<'talkSets'>, userId: clerkId }); setConfirmDeleteId(null); }}
@@ -238,13 +291,15 @@ export default function LibraryPage() {
                         Cancel
                       </button>
                     </div>
-                  ) : (
+                  ) : !offlineReadOnly ? (
                     <button
                       onClick={() => setConfirmDeleteId(set._id)}
                       className="text-[var(--muted)] hover:text-red-400 text-xs px-2 py-1 rounded transition-colors"
                     >
                       Delete
                     </button>
+                  ) : (
+                    <span className="text-xs text-[var(--muted)]">Offline</span>
                   )}
                 </div>
                 <p className="text-xs text-[var(--muted)] mt-1">
@@ -252,7 +307,7 @@ export default function LibraryPage() {
                 </p>
               </div>
             ))}
-            {createMode === 'set' && (
+            {createMode === 'set' && !offlineReadOnly && (
               <form onSubmit={handleCreateSet} className="flex gap-2">
                 <input
                   autoFocus
@@ -277,7 +332,7 @@ export default function LibraryPage() {
 
       {/* FAB menu */}
       <div className="fixed bottom-6 right-5 z-20 flex flex-col items-end gap-3">
-        {fabOpen && tab === 'talks' && (
+        {fabOpen && tab === 'talks' && !offlineReadOnly && (
           <>
             <button
               onClick={openImport}
@@ -295,8 +350,12 @@ export default function LibraryPage() {
           </>
         )}
         <button
-          onClick={() => { if (tab === 'sets') openNew(); else setFabOpen((v) => !v); }}
-          className={`w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg transition-transform ${fabOpen ? 'rotate-45' : ''} active:scale-95`}
+          onClick={() => {
+            if (offlineReadOnly) return;
+            if (tab === 'sets') openNew(); else setFabOpen((v) => !v);
+          }}
+          disabled={offlineReadOnly}
+          className={`w-14 h-14 rounded-full bg-[var(--primary)] text-white text-2xl flex items-center justify-center shadow-lg transition-transform ${fabOpen ? 'rotate-45' : ''} active:scale-95 disabled:opacity-40 disabled:rotate-0`}
         >
           +
         </button>
@@ -367,7 +426,7 @@ export default function LibraryPage() {
       )}
 
       {/* Set assignment sheet */}
-      {assignTalkId && sets && (
+      {assignTalkId && effectiveSets && !offlineReadOnly && (
         <>
           <div className="fixed inset-0 z-30 bg-black/60" onClick={() => setAssignTalkId(null)} />
           <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--background)] rounded-t-2xl max-h-[60dvh] flex flex-col">
@@ -377,7 +436,7 @@ export default function LibraryPage() {
               <div className="w-12" />
             </div>
             <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
-              {sets.map((set) => {
+              {effectiveSets.map((set) => {
                 const inSet = set.talkIds.includes(assignTalkId as Id<'talks'>);
                 return (
                   <button
