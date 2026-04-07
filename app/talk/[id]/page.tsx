@@ -5,7 +5,7 @@ import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { getCachedAudio, setCachedAudio } from '@/lib/audioStore';
+import { getCachedAudio, setCachedAudio, saveTalkData, getTalkData, CachedTalk } from '@/lib/audioStore';
 import { buildSSML, SegmentElement } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
 
@@ -18,6 +18,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
 
+  const [offlineTalk, setOfflineTalk] = useState<CachedTalk | null>(null);
+  const [offlineReady, setOfflineReady] = useState(false);
   const [index, setIndex] = useState(0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -30,9 +32,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
 
   const provider = settings?.provider ?? 'elevenlabs';
   const isAzure = provider === 'azure';
-  const ttsReady = isAzure
+  const ttsReady = offlineReady || (isAzure
     ? !!(settings?.azureSubscriptionKey && settings?.azureRegion)
-    : !!settings?.elevenLabsApiKey;
+    : !!settings?.elevenLabsApiKey);
 
   const ttsConfig: TTSConfig | null = settings
     ? isAzure
@@ -44,7 +46,49 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         : null
     : null;
 
-  const segments = talk?.segments ?? [];
+  // Persist talk data + voice key to IDB for offline fallback
+  useEffect(() => {
+    if (talk && ttsConfig) {
+      const voiceKey = `${ttsConfig.provider}:${ttsConfig.voiceId ?? 'default'}`;
+      saveTalkData(id, { _id: talk._id, title: talk.title, segments: talk.segments, voiceKey });
+    }
+  }, [talk, ttsConfig, id]);
+
+  // Load from IDB if Convex hasn't resolved after 2s (offline)
+  useEffect(() => {
+    if (talk !== undefined) return;
+    const timer = setTimeout(async () => {
+      const cached = await getTalkData(id);
+      if (cached) setOfflineTalk(cached);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [talk, id]);
+
+  const effectiveTalk = talk ?? offlineTalk;
+  const segments = effectiveTalk?.segments ?? [];
+
+  // When offline: load audio blobs from IDB using the saved voice key
+  useEffect(() => {
+    if (!offlineTalk?.voiceKey || segments.length === 0 || ttsConfig) return;
+    const { voiceKey } = offlineTalk;
+    Promise.all(
+      segments.map(async (seg, i) => {
+        const cacheKey = seg.elements
+          ? `${voiceKey}:${id}:ssml:${JSON.stringify(seg.elements)}`
+          : `${voiceKey}:${id}:${seg.text}`;
+        const blob = await getCachedAudio(cacheKey);
+        if (blob) audioUrls.current.set(i, URL.createObjectURL(blob));
+      })
+    ).then(() => {
+      if (audioUrls.current.size > 0) {
+        setCacheLoaded(audioUrls.current.size);
+        setCacheReady(true);
+        setCacheChecked(true);
+        setOfflineReady(true);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offlineTalk, ttsConfig, id]);
   const current = segments[index];
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
@@ -170,7 +214,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     setIndex((i) => i - 1);
   }
 
-  if (talk === undefined) {
+  if (effectiveTalk === null || effectiveTalk === undefined) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
         <p className="text-[var(--muted)] text-sm">Loading…</p>
@@ -178,7 +222,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     );
   }
 
-  if (talk === null || segments.length === 0) {
+  if (segments.length === 0) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--background)]">
         <p className="text-[var(--muted)] text-sm">No segments in this talk.</p>
@@ -193,7 +237,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
         <header className="flex items-center justify-between px-5 pt-6 pb-4">
           <a href="/library" className="text-sm text-[var(--muted)]">← Library</a>
-          <span className="text-xs text-[var(--muted)] truncate mx-4">{talk.title}</span>
+          <span className="text-xs text-[var(--muted)] truncate mx-4">{effectiveTalk.title}</span>
           <div className="w-12" />
         </header>
         <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
