@@ -19,6 +19,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
 
   const [offlineTalk, setOfflineTalk] = useState<CachedTalk | null>(null);
+  const [offlineReady, setOfflineReady] = useState(false);
   const [index, setIndex] = useState(0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -31,9 +32,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
 
   const provider = settings?.provider ?? 'elevenlabs';
   const isAzure = provider === 'azure';
-  const ttsReady = isAzure
+  const ttsReady = offlineReady || (isAzure
     ? !!(settings?.azureSubscriptionKey && settings?.azureRegion)
-    : !!settings?.elevenLabsApiKey;
+    : !!settings?.elevenLabsApiKey);
 
   const ttsConfig: TTSConfig | null = settings
     ? isAzure
@@ -45,10 +46,13 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         : null
     : null;
 
-  // Persist talk data to IDB for offline fallback
+  // Persist talk data + voice key to IDB for offline fallback
   useEffect(() => {
-    if (talk) saveTalkData(id, { _id: talk._id, title: talk.title, segments: talk.segments });
-  }, [talk, id]);
+    if (talk && ttsConfig) {
+      const voiceKey = `${ttsConfig.provider}:${ttsConfig.voiceId ?? 'default'}`;
+      saveTalkData(id, { _id: talk._id, title: talk.title, segments: talk.segments, voiceKey });
+    }
+  }, [talk, ttsConfig, id]);
 
   // Load from IDB if Convex hasn't resolved after 2s (offline)
   useEffect(() => {
@@ -62,6 +66,29 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
 
   const effectiveTalk = talk ?? offlineTalk;
   const segments = effectiveTalk?.segments ?? [];
+
+  // When offline: load audio blobs from IDB using the saved voice key
+  useEffect(() => {
+    if (!offlineTalk?.voiceKey || segments.length === 0 || ttsConfig) return;
+    const { voiceKey } = offlineTalk;
+    Promise.all(
+      segments.map(async (seg, i) => {
+        const cacheKey = seg.elements
+          ? `${voiceKey}:${id}:ssml:${JSON.stringify(seg.elements)}`
+          : `${voiceKey}:${id}:${seg.text}`;
+        const blob = await getCachedAudio(cacheKey);
+        if (blob) audioUrls.current.set(i, URL.createObjectURL(blob));
+      })
+    ).then(() => {
+      if (audioUrls.current.size > 0) {
+        setCacheLoaded(audioUrls.current.size);
+        setCacheReady(true);
+        setCacheChecked(true);
+        setOfflineReady(true);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offlineTalk, ttsConfig, id]);
   const current = segments[index];
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
