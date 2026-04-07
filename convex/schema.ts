@@ -6,7 +6,10 @@ export default defineSchema({
     clerkId: v.string(),
     name: v.string(),
     email: v.string(),
+    provider: v.optional(v.union(v.literal('elevenlabs'), v.literal('azure'))),
     elevenLabsApiKey: v.optional(v.string()),
+    azureSubscriptionKey: v.optional(v.string()),
+    azureRegion: v.optional(v.string()),
     voiceId: v.optional(v.string()),
   }).index('by_clerk_id', ['clerkId']),
 
