@@ -240,9 +240,9 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         </a>
       </header>
 
-      <div className="h-0.5 bg-[var(--border)] mx-5">
+      <div className="h-1 bg-[var(--border)]">
         <div
-          className="h-full bg-[var(--primary)] transition-all duration-300"
+          className="h-full bg-[var(--primary)] rounded-r-full transition-all duration-300"
           style={{ width: `${((index + 1) / segments.length) * 100}%` }}
         />
       </div>
@@ -250,12 +250,16 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       <button
         onClick={handleTap}
         disabled={!ttsReady || isLocked}
-        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full disabled:cursor-default active:opacity-80"
+        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full disabled:cursor-default"
       >
-        <p className="text-2xl leading-relaxed font-medium text-center text-[var(--foreground)]">
-          {current.text}
-        </p>
-        <p className={`mt-8 text-xs transition-colors ${
+        <div className={`px-6 py-8 rounded-3xl transition-all duration-500 ${
+          speakState === 'speaking' ? 'ring-2 ring-[var(--primary)]/30 bg-[var(--surface)]' : ''
+        }`}>
+          <p className="text-3xl leading-snug font-semibold text-center text-[var(--foreground)]" style={{ fontFamily: 'var(--font-display)' }}>
+            {current.text}
+          </p>
+        </div>
+        <p className={`mt-8 text-sm transition-colors ${
           speakState === 'loading' ? 'text-[var(--muted)] animate-pulse' :
           speakState === 'speaking' ? 'text-[var(--primary)]' :
           'text-[var(--muted)]'
@@ -273,17 +277,17 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         <button
           onClick={back}
           disabled={index === 0}
-          className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
+          className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
         >←</button>
         {speakState === 'spoken' && isLast ? (
           <a href="/library" className="text-sm text-[var(--primary)] font-medium">Done</a>
         ) : (
-          <div className="w-12" />
+          <div className="w-14" />
         )}
         <button
           onClick={() => speakState === 'spoken' ? doAdvance() : undefined}
           disabled={isLast || speakState !== 'spoken'}
-          className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
+          className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
         >→</button>
       </div>
     </div>

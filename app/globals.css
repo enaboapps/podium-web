@@ -13,6 +13,8 @@
 }
 
 @theme inline {
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
