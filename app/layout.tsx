@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Lora } from 'next/font/google';
 import './globals.css';
 import ClientLayout from './ClientLayout';
@@ -10,6 +10,18 @@ export const metadata: Metadata = {
   title: 'Podium',
   description: 'Deliver speeches with confidence.',
   manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Podium',
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0a0a0a',
 };
 
 export default function RootLayout({
@@ -20,12 +32,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title" content="Podium" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#0f172a" />
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>
       <body className={`${inter.variable} ${lora.variable} font-sans bg-background text-foreground antialiased`} suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js')` }} />
