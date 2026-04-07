@@ -23,7 +23,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Podium" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#0a0a0a" />
+        <meta name="theme-color" content="#0f172a" />
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`${inter.className} bg-background text-foreground antialiased`} suppressHydrationWarning>
