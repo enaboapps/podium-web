@@ -28,6 +28,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`${inter.variable} ${lora.variable} font-sans bg-background text-foreground antialiased`} suppressHydrationWarning>
+        <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js')` }} />
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
