@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -13,7 +13,6 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@serwist/next": "^9.5.7",
     "convex": "^1.34.1",
     "diff": "^8.0.4",
     "idb-keyval": "^6.2.2",
@@ -32,7 +31,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
-    "serwist": "^9.5.7",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
