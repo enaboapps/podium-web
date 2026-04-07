@@ -1,5 +1,6 @@
 export const DEFAULT_VOICE_ID = 'bIHbv24MWmeRgasZH58o'; // Will (ElevenLabs)
-export const DEFAULT_AZURE_VOICE = 'en-US-AriaNeural';
+// GuyNeural is one of three voices that support <emphasis> in Azure Neural TTS
+export const DEFAULT_AZURE_VOICE = 'en-US-GuyNeural';
 
 export type TTSConfig =
   | { provider: 'elevenlabs'; apiKey: string; voiceId?: string }
