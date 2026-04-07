@@ -5,7 +5,7 @@ const elementUnion = v.union(
   v.object({ type: v.literal('word'), text: v.string() }),
   v.object({ type: v.literal('emphasis-open') }),
   v.object({ type: v.literal('emphasis-close') }),
-  v.object({ type: v.literal('prosody-open'), rate: v.number() }),
+  v.object({ type: v.literal('prosody-open'), rate: v.optional(v.number()), pitch: v.optional(v.string()), volume: v.optional(v.string()) }),
   v.object({ type: v.literal('prosody-close') }),
   v.object({ type: v.literal('break'), ms: v.number() }),
   v.object({ type: v.literal('tag'), value: v.string() }),

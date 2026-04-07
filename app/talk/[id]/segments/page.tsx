@@ -17,65 +17,154 @@ import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type EditorMode = 'emphasis' | 'slow' | 'fast' | 'sayAs' | 'pause' | 'clear';
-type PlayState  = 'idle' | 'loading' | 'playing' | 'error';
+type EditorMode =
+  | 'emphasis'
+  | 'dramatic' | 'whisper' | 'excited'
+  | 'slow' | 'fast' | 'loud' | 'soft'
+  | 'sayAs'
+  | 'pause-250' | 'pause-500' | 'pause-1000' | 'pause-2000'
+  | 'clear';
+
+type PlayState = 'idle' | 'loading' | 'playing' | 'error';
+
+interface ModeEffect {
+  emphasis?: true;
+  rate?: number;
+  pitch?: string;
+  volume?: string;
+  pauseMs?: number;
+  sayAs?: 'characters';
+  clear?: true;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODES: {
   key: EditorMode;
   label: string;
-  off: string;   // button class when inactive
-  on: string;    // button class when active
+  off: string;
+  on: string;
+  effect: ModeEffect;
 }[] = [
-  { key: 'emphasis', label: 'Emphasise', off: 'bg-amber-900/20  text-amber-400  border border-amber-800/40',   on: 'bg-amber-600  text-white' },
-  { key: 'slow',     label: 'Slow',      off: 'bg-blue-900/20   text-blue-400   border border-blue-800/40',    on: 'bg-blue-600   text-white' },
-  { key: 'fast',     label: 'Fast',      off: 'bg-orange-900/20 text-orange-400 border border-orange-800/40',  on: 'bg-orange-500 text-white' },
-  { key: 'sayAs',    label: 'Spell out', off: 'bg-teal-900/20   text-teal-400   border border-teal-800/40',    on: 'bg-teal-600   text-white' },
-  { key: 'pause',    label: '+ Pause',   off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',  on: 'bg-purple-600 text-white' },
-  { key: 'clear',    label: 'Clear',     off: 'bg-[var(--surface)] text-[var(--muted)] border border-transparent', on: 'bg-red-900/40 text-red-300 border border-red-600/40' },
+  { key: 'emphasis', label: 'Emphasise',
+    off: 'bg-amber-900/20  text-amber-400  border border-amber-800/40',
+    on:  'bg-amber-600  text-white',
+    effect: { emphasis: true } },
+  { key: 'dramatic', label: 'Dramatic',
+    off: 'bg-indigo-900/20 text-indigo-400 border border-indigo-800/40',
+    on:  'bg-indigo-600 text-white',
+    effect: { rate: 0.75, pitch: '-10%' } },
+  { key: 'whisper',  label: 'Whisper',
+    off: 'bg-slate-800/30  text-slate-400  border border-slate-700/40',
+    on:  'bg-slate-600  text-white',
+    effect: { rate: 0.8, volume: 'soft' } },
+  { key: 'excited',  label: 'Excited',
+    off: 'bg-rose-900/20   text-rose-400   border border-rose-800/40',
+    on:  'bg-rose-600   text-white',
+    effect: { rate: 1.3, pitch: '+10%' } },
+  { key: 'slow',     label: 'Slow',
+    off: 'bg-blue-900/20   text-blue-400   border border-blue-800/40',
+    on:  'bg-blue-600   text-white',
+    effect: { rate: 0.75 } },
+  { key: 'fast',     label: 'Fast',
+    off: 'bg-orange-900/20 text-orange-400 border border-orange-800/40',
+    on:  'bg-orange-500 text-white',
+    effect: { rate: 1.3 } },
+  { key: 'loud',     label: 'Loud',
+    off: 'bg-yellow-900/20 text-yellow-400 border border-yellow-800/40',
+    on:  'bg-yellow-500 text-white',
+    effect: { volume: '+6dB' } },
+  { key: 'soft',     label: 'Soft',
+    off: 'bg-slate-800/30  text-slate-400  border border-slate-700/40',
+    on:  'bg-slate-500  text-white',
+    effect: { volume: 'soft' } },
+  { key: 'sayAs',    label: 'Spell out',
+    off: 'bg-teal-900/20   text-teal-400   border border-teal-800/40',
+    on:  'bg-teal-600   text-white',
+    effect: { sayAs: 'characters' } },
+  { key: 'pause-250',  label: '¼s',
+    off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',
+    on:  'bg-purple-600 text-white',
+    effect: { pauseMs: 250 } },
+  { key: 'pause-500',  label: '½s',
+    off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',
+    on:  'bg-purple-600 text-white',
+    effect: { pauseMs: 500 } },
+  { key: 'pause-1000', label: '1s',
+    off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',
+    on:  'bg-purple-600 text-white',
+    effect: { pauseMs: 1000 } },
+  { key: 'pause-2000', label: '2s',
+    off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',
+    on:  'bg-purple-600 text-white',
+    effect: { pauseMs: 2000 } },
+  { key: 'clear',    label: 'Clear',
+    off: 'bg-[var(--surface)] text-[var(--muted)] border border-transparent',
+    on:  'bg-red-900/40 text-red-300 border border-red-600/40',
+    effect: { clear: true } },
 ];
-
-const PAUSE_DURATIONS = [
-  { label: '¼s', ms: 250  },
-  { label: '½s', ms: 500  },
-  { label: '1s',  ms: 1000 },
-  { label: '2s',  ms: 2000 },
-] as const;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function pauseLabel(ms: number) {
-  if (ms <= 300) return '¼s';
-  if (ms <= 750) return '½s';
+  if (ms <= 300)  return '¼s';
+  if (ms <= 750)  return '½s';
   if (ms <= 1250) return '1s';
   return '2s';
 }
 
-function wordChipClass(ann: WordAnnotation, active: boolean): string {
+function wordChipClass(ann: WordAnnotation, isInteractive: boolean): string {
   const base = 'min-h-[44px] px-3 py-2 rounded-xl text-sm font-medium leading-tight transition-all active:scale-95';
-  const ring = active ? ' ring-2 ring-white/30 ring-offset-1 ring-offset-[var(--background)]' : '';
-  const { emphasis, rate, sayAs } = ann;
-  const slow = rate !== null && rate < 1;
-  const fast = rate !== null && rate >= 1;
-  if (emphasis && slow) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold underline underline-offset-2 decoration-blue-400/60`;
-  if (emphasis && fast) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold italic`;
-  if (emphasis)         return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold`;
-  if (slow)             return `${base}${ring} bg-blue-900/40   border border-blue-500/60   text-blue-200  underline underline-offset-2 decoration-blue-400/60`;
-  if (fast)             return `${base}${ring} bg-orange-900/40 border border-orange-500/60 text-orange-200 italic`;
-  if (sayAs)            return `${base}${ring} bg-teal-900/40   border border-teal-500/60   text-teal-200  tracking-widest`;
+  const ring = isInteractive ? ' ring-2 ring-white/30 ring-offset-1 ring-offset-[var(--background)]' : '';
+  const { emphasis, rate, pitch, volume, sayAs } = ann;
+
+  const isSlow = rate !== null && rate < 1;
+  const isFast = rate !== null && rate >= 1;
+  const pitchNum = pitch ? parseFloat(pitch) : NaN;
+  const isLoudVol = volume !== null && (volume === 'loud' || volume === 'x-loud' || (volume.startsWith('+') && volume.includes('dB')));
+  const isSoftVol = volume !== null && !isLoudVol;
+  const isDramatic = isSlow && !isNaN(pitchNum) && pitchNum < 0;
+  const isWhisper  = isSlow && isSoftVol;
+  const isExcited  = isFast && !isNaN(pitchNum) && pitchNum > 0;
+
+  if (emphasis && isSlow) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold underline underline-offset-2 decoration-blue-400/60`;
+  if (emphasis && isFast) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold italic`;
+  if (emphasis)           return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold`;
+  if (isDramatic) return `${base}${ring} bg-indigo-900/40 border border-indigo-500/60 text-indigo-200`;
+  if (isWhisper)  return `${base}${ring} bg-slate-800/60  border border-slate-500/60  text-slate-300 italic`;
+  if (isExcited)  return `${base}${ring} bg-rose-900/40   border border-rose-500/60   text-rose-200 font-semibold`;
+  if (isSlow)     return `${base}${ring} bg-blue-900/40   border border-blue-500/60   text-blue-200 underline underline-offset-2 decoration-blue-400/60`;
+  if (isFast)     return `${base}${ring} bg-orange-900/40 border border-orange-500/60 text-orange-200 italic`;
+  if (isLoudVol)  return `${base}${ring} bg-yellow-900/40 border border-yellow-500/60 text-yellow-200 font-bold`;
+  if (isSoftVol)  return `${base}${ring} bg-slate-800/40  border border-slate-600/40  text-slate-400`;
+  if (sayAs)      return `${base}${ring} bg-teal-900/40   border border-teal-500/60   text-teal-200 tracking-widest`;
   return `${base}${ring} bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)]`;
 }
 
 function effectDots(elements: SegmentElement[] | undefined) {
   if (!elements?.length) return [];
   return [
-    { show: elements.some(e => e.type === 'emphasis-open'),               color: 'bg-amber-500'  },
-    { show: elements.some(e => e.type === 'prosody-open' && e.rate < 1),  color: 'bg-blue-500'   },
-    { show: elements.some(e => e.type === 'prosody-open' && e.rate >= 1), color: 'bg-orange-500' },
-    { show: elements.some(e => e.type === 'say-as'),                      color: 'bg-teal-500'   },
-    { show: elements.some(e => e.type === 'break'),                       color: 'bg-purple-500' },
+    { show: elements.some(e => e.type === 'emphasis-open'),                                              color: 'bg-amber-500'  },
+    { show: elements.some(e => e.type === 'prosody-open' && e.rate !== undefined && e.rate < 1),         color: 'bg-blue-500'   },
+    { show: elements.some(e => e.type === 'prosody-open' && e.rate !== undefined && e.rate >= 1),        color: 'bg-orange-500' },
+    { show: elements.some(e => e.type === 'prosody-open' && e.pitch  !== undefined),                     color: 'bg-indigo-500' },
+    { show: elements.some(e => e.type === 'prosody-open' && e.volume !== undefined),                     color: 'bg-yellow-500' },
+    { show: elements.some(e => e.type === 'say-as'),                                                     color: 'bg-teal-500'   },
+    { show: elements.some(e => e.type === 'break'),                                                      color: 'bg-purple-500' },
   ].filter(d => d.show);
+}
+
+function applyEffect(ann: WordAnnotation, effect: ModeEffect): WordAnnotation {
+  if (effect.clear) return { ...ann, emphasis: false, rate: null, pitch: null, volume: null, sayAs: null, pauseAfterMs: null };
+  return {
+    ...ann,
+    ...(effect.emphasis !== undefined && { emphasis: effect.emphasis }),
+    ...(effect.rate     !== undefined && { rate:     effect.rate     }),
+    ...(effect.pitch    !== undefined && { pitch:    effect.pitch    }),
+    ...(effect.volume   !== undefined && { volume:   effect.volume   }),
+    ...(effect.sayAs    !== undefined && { sayAs:    effect.sayAs    }),
+    ...(effect.pauseMs  !== undefined && { pauseAfterMs: effect.pauseMs }),
+  };
 }
 
 // ─── Editor ──────────────────────────────────────────────────────────────────
@@ -91,19 +180,17 @@ function SegmentBrickEditor({
   ttsConfig: TTSConfig | null;
   onSave: (segmentId: string, elements: SegmentElement[]) => Promise<void>;
 }) {
-  const [annotations,   setAnnotations]   = useState(initialAnnotations);
-  const [activeMode,    setActiveMode]    = useState<EditorMode | null>(null);
-  const [anchorId,      setAnchorId]      = useState<string | null>(null);
-  const [pausePickerId, setPausePickerId] = useState<string | null>(null);
-  const [playState,     setPlayState]     = useState<PlayState>('idle');
-  const [playError,     setPlayError]     = useState<string | null>(null);
-  const [saving,        setSaving]        = useState(false);
-  const [dirty,         setDirty]         = useState(false);
-  const [savedBriefly,  setSavedBriefly]  = useState(false);
+  const [annotations,  setAnnotations]  = useState(initialAnnotations);
+  const [activeMode,   setActiveMode]   = useState<EditorMode | null>(null);
+  const [anchorId,     setAnchorId]     = useState<string | null>(null);
+  const [playState,    setPlayState]    = useState<PlayState>('idle');
+  const [playError,    setPlayError]    = useState<string | null>(null);
+  const [saving,       setSaving]       = useState(false);
+  const [dirty,        setDirty]        = useState(false);
+  const [savedBriefly, setSavedBriefly] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   function toggleMode(mode: EditorMode) {
-    setPausePickerId(null);
     setAnchorId(null);
     setActiveMode(prev => prev === mode ? null : mode);
   }
@@ -116,59 +203,27 @@ function SegmentBrickEditor({
   function handleWordTap(ann: WordAnnotation) {
     if (!activeMode) return;
 
-    // Pause: single-word only, no range
-    if (activeMode === 'pause') {
-      if (ann.pauseAfterMs !== null) {
-        setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: null } : a));
-        if (pausePickerId === ann.id) setPausePickerId(null);
-      } else {
-        setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: 500 } : a));
-        setPausePickerId(ann.id);
-        setActiveMode(null);
-      }
-      markDirty();
-      return;
-    }
-
-    // Range-picker: first tap sets anchor, second tap applies over range
     if (anchorId === null) {
       setAnchorId(ann.id);
       return;
     }
 
-    const anchorIdx = annotations.findIndex(a => a.id === anchorId);
-    const tapIdx    = annotations.findIndex(a => a.id === ann.id);
+    const modeConfig = MODES.find(m => m.key === activeMode)!;
+    const anchorIdx  = annotations.findIndex(a => a.id === anchorId);
+    const tapIdx     = annotations.findIndex(a => a.id === ann.id);
     const lo = Math.min(anchorIdx, tapIdx);
     const hi = Math.max(anchorIdx, tapIdx);
 
-    setAnnotations(prev => prev.map((a, i) => {
-      if (i < lo || i > hi) return a;
-      switch (activeMode) {
-        case 'emphasis': return { ...a, emphasis: true };
-        case 'slow':     return { ...a, rate: 0.7 };
-        case 'fast':     return { ...a, rate: 1.4 };
-        case 'sayAs':    return { ...a, sayAs: 'characters' };
-        case 'clear':    return { ...a, emphasis: false, rate: null, sayAs: null };
-        default:         return a;
-      }
-    }));
+    setAnnotations(prev => prev.map((a, i) =>
+      i >= lo && i <= hi ? applyEffect(a, modeConfig.effect) : a
+    ));
     setAnchorId(null);
+    setActiveMode(null);
     markDirty();
   }
 
   function handlePauseChipTap(id: string) {
-    setActiveMode(null);
-    setPausePickerId(prev => prev === id ? null : id);
-  }
-
-  function updatePause(id: string, ms: number) {
-    setAnnotations(prev => prev.map(a => a.id === id ? { ...a, pauseAfterMs: ms } : a));
-    markDirty();
-  }
-
-  function removePause(id: string) {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, pauseAfterMs: null } : a));
-    setPausePickerId(null);
     markDirty();
   }
 
@@ -183,8 +238,8 @@ function SegmentBrickEditor({
     setPlayState('loading');
     setPlayError(null);
     try {
-      const blob = await fetchTTSBlob(buildSSML(buildElements(annotations)), ttsConfig);
-      const url  = URL.createObjectURL(blob);
+      const blob  = await fetchTTSBlob(buildSSML(buildElements(annotations)), ttsConfig);
+      const url   = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
       audio.onended = () => { URL.revokeObjectURL(url); setPlayState('idle'); };
@@ -215,43 +270,11 @@ function SegmentBrickEditor({
     }
   }
 
-  const pausePickerAnn = pausePickerId ? annotations.find(a => a.id === pausePickerId) : null;
-
   return (
     <div>
-      {/* Mode strip — OR range-anchor hint — OR pause duration picker */}
+      {/* Mode strip — OR range-anchor hint */}
       <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto border-b border-[var(--border)] bg-[var(--background)]/60">
-        {pausePickerAnn ? (
-          <>
-            <span className="text-xs text-[var(--muted)] shrink-0 mr-0.5">Pause:</span>
-            {PAUSE_DURATIONS.map(({ label, ms }) => (
-              <button
-                key={ms}
-                onClick={() => { updatePause(pausePickerAnn.id, ms); setPausePickerId(null); }}
-                className={`h-10 px-3 rounded-xl text-sm font-medium shrink-0 transition-colors ${
-                  pausePickerAnn.pauseAfterMs === ms
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-[var(--surface)] text-[var(--foreground)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={() => removePause(pausePickerAnn.id)}
-              className="h-10 px-3 rounded-xl text-sm font-medium bg-[var(--surface)] text-red-400 shrink-0"
-            >
-              Remove
-            </button>
-            <div className="flex-1" />
-            <button
-              onClick={() => setPausePickerId(null)}
-              className="h-10 px-3 text-sm text-[var(--muted)] shrink-0"
-            >
-              ✕
-            </button>
-          </>
-        ) : anchorId ? (
+        {anchorId ? (
           <>
             <span className="text-sm text-[var(--foreground)] shrink-0">Now tap the last word in the range</span>
             <div className="flex-1" />
@@ -263,17 +286,24 @@ function SegmentBrickEditor({
             </button>
           </>
         ) : (
-          MODES.map(({ key, label, off, on }) => (
-            <button
-              key={key}
-              onClick={() => toggleMode(key)}
-              className={`h-10 px-3 rounded-xl text-sm font-medium shrink-0 transition-colors ${
-                activeMode === key ? on : off
-              }`}
-            >
-              {label}
-            </button>
-          ))
+          MODES.map((mode, i) => {
+            const isPauseGroupStart = mode.key === 'pause-250';
+            return (
+              <span key={mode.key} className="contents">
+                {isPauseGroupStart && (
+                  <span className="text-[10px] text-[var(--muted)] shrink-0 ml-1 self-center">Pause</span>
+                )}
+                <button
+                  onClick={() => toggleMode(mode.key)}
+                  className={`h-10 px-3 rounded-xl text-sm font-medium shrink-0 transition-colors ${
+                    activeMode === mode.key ? mode.on : mode.off
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              </span>
+            );
+          })
         )}
       </div>
 
@@ -297,11 +327,9 @@ function SegmentBrickEditor({
                 onClick={() => handlePauseChipTap(ann.id)}
                 className="flex flex-col items-center justify-center mx-0.5 shrink-0"
                 style={{ minWidth: 32, minHeight: 44 }}
-                aria-label={`${pauseLabel(ann.pauseAfterMs)} pause — tap to edit`}
+                aria-label={`${pauseLabel(ann.pauseAfterMs)} pause — tap to remove`}
               >
-                <div className={`w-0.5 h-4 rounded-full transition-colors ${
-                  pausePickerId === ann.id ? 'bg-purple-300' : 'bg-purple-500/70'
-                }`} />
+                <div className="w-0.5 h-4 rounded-full bg-purple-500/70" />
                 <span className="text-[9px] text-purple-400 mt-0.5 leading-none">
                   {pauseLabel(ann.pauseAfterMs)}
                 </span>
@@ -322,9 +350,9 @@ function SegmentBrickEditor({
             'text-[var(--muted)]'
           }`}
         >
-          {playState === 'loading' ? 'Loading…'                     :
-           playState === 'playing' ? '■ Stop'                       :
-           playState === 'error'   ? (playError ?? 'Test failed')   :
+          {playState === 'loading' ? 'Loading…'                   :
+           playState === 'playing' ? '■ Stop'                     :
+           playState === 'error'   ? (playError ?? 'Test failed') :
            '▶ Test'}
         </button>
 

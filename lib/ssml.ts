@@ -2,7 +2,7 @@ export type SegmentElement =
   | { type: 'word'; text: string }
   | { type: 'emphasis-open' }
   | { type: 'emphasis-close' }
-  | { type: 'prosody-open'; rate: number }
+  | { type: 'prosody-open'; rate?: number; pitch?: string; volume?: string }
   | { type: 'prosody-close' }
   | { type: 'break'; ms: number }
   | { type: 'tag'; value: string }
@@ -13,7 +13,9 @@ export interface WordAnnotation {
   id: string;           // ephemeral React key — not persisted
   text: string;
   emphasis: boolean;
-  rate: number | null;  // null = no prosody; 0.7 = slow, 1.4 = fast
+  rate: number | null;  // null = no rate; 0.75 = slow, 1.3 = fast
+  pitch: string | null; // null = no pitch; '-10%' = lower, '+10%' = higher
+  volume: string | null; // null = no volume; 'soft', '+6dB', '-6dB'
   sayAs: 'characters' | null;
   pauseAfterMs: number | null;
 }
@@ -23,18 +25,28 @@ export function buildAnnotations(elements: SegmentElement[]): WordAnnotation[] {
   const result: WordAnnotation[] = [];
   let pendingEmphasis = false;
   let pendingRate: number | null = null;
+  let pendingPitch: string | null = null;
+  let pendingVolume: string | null = null;
 
   for (const el of elements) {
     switch (el.type) {
       case 'emphasis-open':  pendingEmphasis = true; break;
       case 'emphasis-close': pendingEmphasis = false; break;
-      case 'prosody-open':   pendingRate = el.rate; break;
-      case 'prosody-close':  pendingRate = null; break;
+      case 'prosody-open':
+        pendingRate   = el.rate   ?? null;
+        pendingPitch  = el.pitch  ?? null;
+        pendingVolume = el.volume ?? null;
+        break;
+      case 'prosody-close':
+        pendingRate   = null;
+        pendingPitch  = null;
+        pendingVolume = null;
+        break;
       case 'word':
-        result.push({ id: crypto.randomUUID(), text: el.text, emphasis: pendingEmphasis, rate: pendingRate, sayAs: null, pauseAfterMs: null });
+        result.push({ id: crypto.randomUUID(), text: el.text, emphasis: pendingEmphasis, rate: pendingRate, pitch: pendingPitch, volume: pendingVolume, sayAs: null, pauseAfterMs: null });
         break;
       case 'say-as':
-        result.push({ id: crypto.randomUUID(), text: el.text, emphasis: pendingEmphasis, rate: pendingRate, sayAs: el.interpretAs, pauseAfterMs: null });
+        result.push({ id: crypto.randomUUID(), text: el.text, emphasis: pendingEmphasis, rate: pendingRate, pitch: pendingPitch, volume: pendingVolume, sayAs: el.interpretAs, pauseAfterMs: null });
         break;
       case 'break':
         if (result.length > 0) result[result.length - 1].pauseAfterMs = el.ms;
@@ -50,9 +62,16 @@ export function buildElements(annotations: WordAnnotation[]): SegmentElement[] {
   const elements: SegmentElement[] = [];
 
   for (const ann of annotations) {
+    const hasProsody = ann.rate !== null || ann.pitch !== null || ann.volume !== null;
+
     // emphasis must be outermost — Azure content model: <emphasis><prosody>word</prosody></emphasis>
-    if (ann.emphasis)      elements.push({ type: 'emphasis-open' });
-    if (ann.rate !== null) elements.push({ type: 'prosody-open', rate: ann.rate });
+    if (ann.emphasis) elements.push({ type: 'emphasis-open' });
+    if (hasProsody)   elements.push({
+      type: 'prosody-open',
+      ...(ann.rate   !== null ? { rate:   ann.rate   } : {}),
+      ...(ann.pitch  !== null ? { pitch:  ann.pitch  } : {}),
+      ...(ann.volume !== null ? { volume: ann.volume } : {}),
+    });
 
     if (ann.sayAs) {
       elements.push({ type: 'say-as', text: ann.text, interpretAs: ann.sayAs });
@@ -60,8 +79,8 @@ export function buildElements(annotations: WordAnnotation[]): SegmentElement[] {
       elements.push({ type: 'word', text: ann.text });
     }
 
-    if (ann.rate !== null) elements.push({ type: 'prosody-close' });
-    if (ann.emphasis)      elements.push({ type: 'emphasis-close' });
+    if (hasProsody)   elements.push({ type: 'prosody-close' });
+    if (ann.emphasis) elements.push({ type: 'emphasis-close' });
     if (ann.pauseAfterMs !== null) elements.push({ type: 'break', ms: ann.pauseAfterMs });
   }
 
@@ -74,7 +93,7 @@ export function tokenise(text: string): WordAnnotation[] {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .map((w) => ({ id: crypto.randomUUID(), text: w, emphasis: false, rate: null, sayAs: null, pauseAfterMs: null }));
+    .map((w) => ({ id: crypto.randomUUID(), text: w, emphasis: false, rate: null, pitch: null, volume: null, sayAs: null, pauseAfterMs: null }));
 }
 
 /**
@@ -97,8 +116,14 @@ export function buildSSML(elements: SegmentElement[]): string {
       }
       case 'emphasis-open':  inner += '<emphasis level="strong">'; break;
       case 'emphasis-close': inner += '</emphasis>'; break;
-      // rate is a multiplier (0.7 = 70% speed); use number form, not % — "70%" means 70% faster
-      case 'prosody-open':   inner += `<prosody rate="${el.rate}">`; break;
+      case 'prosody-open': {
+        const attrs: string[] = [];
+        if (el.rate   !== undefined) attrs.push(`rate="${el.rate}"`);
+        if (el.pitch  !== undefined) attrs.push(`pitch="${el.pitch}"`);
+        if (el.volume !== undefined) attrs.push(`volume="${el.volume}"`);
+        inner += `<prosody ${attrs.join(' ')}>`;
+        break;
+      }
       case 'prosody-close':  inner += '</prosody>'; break;
       case 'break':          inner += `<break time="${el.ms / 1000}s"/>`; break;
       case 'tag':            break; // ElevenLabs v3 — not used in SSML
