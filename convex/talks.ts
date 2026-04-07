@@ -124,6 +124,7 @@ export const saveSegmentElements = mutation({
       v.object({ type: v.literal('prosody-close') }),
       v.object({ type: v.literal('break'), ms: v.number() }),
       v.object({ type: v.literal('tag'), value: v.string() }),
+      v.object({ type: v.literal('say-as'), text: v.string(), interpretAs: v.literal('characters') }),
     )),
   },
   handler: async (ctx, { id, userId, segmentId, elements }) => {
