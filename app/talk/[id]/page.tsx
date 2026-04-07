@@ -6,8 +6,8 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getCachedAudio, setCachedAudio } from '@/lib/audioStore';
-import { buildTTSText, SegmentElement } from '@/lib/ssml';
-import { fetchTTSBlob } from '@/lib/tts';
+import { buildSSML, SegmentElement } from '@/lib/ssml';
+import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -22,32 +22,44 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Pre-cache all segments into IndexedDB
   const audioUrls = useRef<Map<number, string>>(new Map());
   const [cacheLoaded, setCacheLoaded] = useState(0);
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheFailed, setCacheFailed] = useState(false);
-  // True once we know whether network fetching is needed — avoids flash on repeat visits
   const [cacheChecked, setCacheChecked] = useState(false);
 
-  const apiKey = settings?.elevenLabsApiKey;
+  const provider = settings?.provider ?? 'elevenlabs';
+  const isAzure = provider === 'azure';
+  const ttsReady = isAzure
+    ? !!(settings?.azureSubscriptionKey && settings?.azureRegion)
+    : !!settings?.elevenLabsApiKey;
+
+  const ttsConfig: TTSConfig | null = settings
+    ? isAzure
+      ? settings.azureSubscriptionKey && settings.azureRegion
+        ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.voiceId }
+        : null
+      : settings.elevenLabsApiKey
+        ? { provider: 'elevenlabs', apiKey: settings.elevenLabsApiKey, voiceId: settings.voiceId }
+        : null
+    : null;
+
   const segments = talk?.segments ?? [];
   const current = segments[index];
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
 
   useEffect(() => {
-    if (!apiKey || segments.length === 0) return;
+    if (!ttsConfig || segments.length === 0) return;
 
     const controller = new AbortController();
     const { signal } = controller;
 
     async function prepare() {
-      // Phase 1: read everything from IDB in parallel
       const idbResults = await Promise.all(
         segments.map(async (seg, i) => {
           const cacheKey = seg.elements
-            ? `${id}:v3:${JSON.stringify(seg.elements)}`
+            ? `${id}:ssml:${JSON.stringify(seg.elements)}`
             : `${id}:${seg.text}`;
           return { i, seg, key: cacheKey, blob: await getCachedAudio(cacheKey) };
         })
@@ -76,10 +88,10 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       await Promise.all(
         misses.map(async ({ i, key, seg }) => {
           try {
-            const ttsText = seg.elements
-              ? buildTTSText(seg.elements as SegmentElement[])
+            const ttsText = isAzure && seg.elements
+              ? buildSSML(seg.elements as SegmentElement[])
               : seg.text;
-            const blob = await fetchTTSBlob(ttsText, apiKey!, settings?.voiceId, signal);
+            const blob = await fetchTTSBlob(ttsText, ttsConfig!);
             if (signal.aborted) return;
             await setCachedAudio(key, blob);
             audioUrls.current.set(i, URL.createObjectURL(blob));
@@ -105,7 +117,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
       audioUrls.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, id, segments.length]);
+  }, [ttsReady, id, segments.length]);
 
   function handleTap() {
     if (isLocked) return;
@@ -116,9 +128,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     doSpeak();
   }
 
-  function doSpeak() {
-    speakAt(index);
-  }
+  function doSpeak() { speakAt(index); }
 
   function doAdvance() {
     audioRef.current?.pause();
@@ -138,15 +148,11 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   async function speakAt(i: number) {
     const url = audioUrls.current.get(i);
     if (!url) { setSpeakState('idle'); return; }
-
     setSpeakState('loading');
-
     const audio = new Audio(url);
     audioRef.current = audio;
-
     audio.onended = () => setSpeakState('spoken');
     audio.onerror = () => setSpeakState('idle');
-
     try {
       setSpeakState('speaking');
       await audio.play();
@@ -180,8 +186,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     );
   }
 
-  // Loading screen — only shown when network fetching is needed (cacheChecked but not ready)
-  if (apiKey && cacheChecked && !cacheReady) {
+  if (ttsReady && cacheChecked && !cacheReady) {
     const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
     return (
       <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
@@ -190,10 +195,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
           <span className="text-xs text-[var(--muted)] truncate mx-4">{talk.title}</span>
           <div className="w-12" />
         </header>
-
         <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
           <p className="text-sm text-[var(--muted)]">Preparing audio…</p>
-
           <div className="w-full max-w-xs">
             <div className="h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
               <div
@@ -205,12 +208,8 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
               {cacheLoaded} / {segments.length}
             </p>
           </div>
-
           {cacheFailed && (
-            <button
-              onClick={() => setCacheReady(true)}
-              className="text-sm text-[var(--primary)]"
-            >
+            <button onClick={() => setCacheReady(true)} className="text-sm text-[var(--primary)]">
               Continue anyway
             </button>
           )}
@@ -219,9 +218,10 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
     );
   }
 
+  const noTTSMessage = isAzure ? 'Add Azure credentials in Settings' : 'Add ElevenLabs key in Settings';
+
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
-      {/* Header */}
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
         <a
           href="/library"
@@ -240,7 +240,6 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         </a>
       </header>
 
-      {/* Progress bar */}
       <div className="h-0.5 bg-[var(--border)] mx-5">
         <div
           className="h-full bg-[var(--primary)] transition-all duration-300"
@@ -248,58 +247,44 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
         />
       </div>
 
-      {/* Main tap area */}
       <button
         onClick={handleTap}
-        disabled={!apiKey || isLocked}
+        disabled={!ttsReady || isLocked}
         className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full disabled:cursor-default active:opacity-80"
       >
         <p className="text-2xl leading-relaxed font-medium text-center text-[var(--foreground)]">
           {current.text}
         </p>
-
         <p className={`mt-8 text-xs transition-colors ${
           speakState === 'loading' ? 'text-[var(--muted)] animate-pulse' :
           speakState === 'speaking' ? 'text-[var(--primary)]' :
-          speakState === 'spoken' ? 'text-[var(--muted)]' :
           'text-[var(--muted)]'
         }`}>
           {speakState === 'loading' && 'Loading…'}
           {speakState === 'speaking' && 'Speaking…'}
           {speakState === 'spoken' && (isLast ? 'Done' : 'Tap to advance')}
-          {speakState === 'idle' && (apiKey ? 'Tap to speak' : 'Add ElevenLabs key in Settings')}
+          {speakState === 'idle' && (ttsReady ? 'Tap to speak' : noTTSMessage)}
         </p>
       </button>
 
-      {/* Nav — hidden while locked */}
-      <div
-        className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
-          isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        }`}
-      >
+      <div className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
+        isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      }`}>
         <button
           onClick={back}
           disabled={index === 0}
           className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
-        >
-          ←
-        </button>
-
+        >←</button>
         {speakState === 'spoken' && isLast ? (
-          <a href="/library" className="text-sm text-[var(--primary)] font-medium">
-            Done
-          </a>
+          <a href="/library" className="text-sm text-[var(--primary)] font-medium">Done</a>
         ) : (
           <div className="w-12" />
         )}
-
         <button
           onClick={() => speakState === 'spoken' ? doAdvance() : undefined}
           disabled={isLast || speakState !== 'spoken'}
           className="w-12 h-12 flex items-center justify-center text-[var(--muted)] disabled:opacity-20 text-xl"
-        >
-          →
-        </button>
+        >→</button>
       </div>
     </div>
   );

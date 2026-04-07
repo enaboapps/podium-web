@@ -7,42 +7,38 @@ export type SegmentElement =
   | { type: 'break'; ms: number }
   | { type: 'tag'; value: string };
 
-function breakTag(ms: number): string {
-  if (ms <= 300) return '[short pause]';
-  if (ms <= 750) return '[pause]';
-  return '[long pause]';
-}
-
 /**
- * Build a text string with ElevenLabs v3 audio tags from a brick element array.
- * Close tags (emphasis-close, prosody-close) output nothing — v3 tags are directional,
- * not paired wrappers.
+ * Build a proper SSML string from a brick element array for Azure TTS.
+ * tag elements (ElevenLabs v3 only) are silently skipped.
  */
-export function buildTTSText(elements: SegmentElement[]): string {
-  let out = '';
+export function buildSSML(elements: SegmentElement[]): string {
+  let inner = '';
   for (const el of elements) {
     switch (el.type) {
       case 'word':
-        out += el.text + ' ';
+        inner += el.text + ' ';
         break;
       case 'emphasis-open':
-        out += '[emphasized] ';
-        break;
-      case 'prosody-open':
-        out += el.rate < 1 ? '[slows down] ' : '[rushed] ';
-        break;
-      case 'break':
-        out += breakTag(el.ms) + ' ';
-        break;
-      case 'tag':
-        out += `[${el.value}] `;
+        inner += '<emphasis level="strong">';
         break;
       case 'emphasis-close':
+        inner += '</emphasis>';
+        break;
+      case 'prosody-open':
+        inner += `<prosody rate="${Math.round(el.rate * 100)}%">`;
+        break;
       case 'prosody-close':
+        inner += '</prosody>';
+        break;
+      case 'break':
+        inner += `<break time="${el.ms / 1000}s"/>`;
+        break;
+      case 'tag':
+        // ElevenLabs v3 audio tags — not used in SSML
         break;
     }
   }
-  return out.trimEnd();
+  return `<speak>${inner.trimEnd()}</speak>`;
 }
 
 /** Tokenise plain text into word elements. */

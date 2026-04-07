@@ -46,6 +46,42 @@ export const saveApiKey = mutation({
   },
 });
 
+export const saveProvider = mutation({
+  args: { clerkId: v.string(), provider: v.union(v.literal('elevenlabs'), v.literal('azure')) },
+  handler: async (ctx, { clerkId, provider }) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
+      .unique();
+    if (!user) throw new Error('User not found');
+    await ctx.db.patch(user._id, { provider });
+  },
+});
+
+export const saveAzureCredentials = mutation({
+  args: { clerkId: v.string(), azureSubscriptionKey: v.string(), azureRegion: v.string() },
+  handler: async (ctx, { clerkId, azureSubscriptionKey, azureRegion }) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
+      .unique();
+    if (!user) throw new Error('User not found');
+    await ctx.db.patch(user._id, { azureSubscriptionKey, azureRegion });
+  },
+});
+
+export const clearAzureCredentials = mutation({
+  args: { clerkId: v.string() },
+  handler: async (ctx, { clerkId }) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
+      .unique();
+    if (!user) throw new Error('User not found');
+    await ctx.db.patch(user._id, { azureSubscriptionKey: undefined, azureRegion: undefined });
+  },
+});
+
 export const saveVoiceId = mutation({
   args: { clerkId: v.string(), voiceId: v.string() },
   handler: async (ctx, { clerkId, voiceId }) => {
