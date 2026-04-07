@@ -50,8 +50,9 @@ export function buildElements(annotations: WordAnnotation[]): SegmentElement[] {
   const elements: SegmentElement[] = [];
 
   for (const ann of annotations) {
-    if (ann.rate !== null) elements.push({ type: 'prosody-open', rate: ann.rate });
+    // emphasis must be outermost — Azure content model: <emphasis><prosody>word</prosody></emphasis>
     if (ann.emphasis)      elements.push({ type: 'emphasis-open' });
+    if (ann.rate !== null) elements.push({ type: 'prosody-open', rate: ann.rate });
 
     if (ann.sayAs) {
       elements.push({ type: 'say-as', text: ann.text, interpretAs: ann.sayAs });
@@ -59,8 +60,8 @@ export function buildElements(annotations: WordAnnotation[]): SegmentElement[] {
       elements.push({ type: 'word', text: ann.text });
     }
 
-    if (ann.emphasis)      elements.push({ type: 'emphasis-close' });
     if (ann.rate !== null) elements.push({ type: 'prosody-close' });
+    if (ann.emphasis)      elements.push({ type: 'emphasis-close' });
     if (ann.pauseAfterMs !== null) elements.push({ type: 'break', ms: ann.pauseAfterMs });
   }
 
@@ -96,7 +97,8 @@ export function buildSSML(elements: SegmentElement[]): string {
       }
       case 'emphasis-open':  inner += '<emphasis level="strong">'; break;
       case 'emphasis-close': inner += '</emphasis>'; break;
-      case 'prosody-open':   inner += `<prosody rate="${Math.round(el.rate * 100)}%">`; break;
+      // rate is a multiplier (0.7 = 70% speed); use number form, not % — "70%" means 70% faster
+      case 'prosody-open':   inner += `<prosody rate="${el.rate}">`; break;
       case 'prosody-close':  inner += '</prosody>'; break;
       case 'break':          inner += `<break time="${el.ms / 1000}s"/>`; break;
       case 'tag':            break; // ElevenLabs v3 — not used in SSML
