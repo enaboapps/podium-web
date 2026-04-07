@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useCallback, useRef, useMemo } from 'react';
+import { use, useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
@@ -15,305 +15,163 @@ import {
 } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-function pauseLabel(ms: number): string {
+type EditorMode = 'emphasis' | 'slow' | 'fast' | 'sayAs' | 'pause' | 'clear';
+type PlayState  = 'idle' | 'loading' | 'playing' | 'error';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MODES: {
+  key: EditorMode;
+  label: string;
+  off: string;   // button class when inactive
+  on: string;    // button class when active
+}[] = [
+  { key: 'emphasis', label: 'Emphasise', off: 'bg-amber-900/20  text-amber-400  border border-amber-800/40',   on: 'bg-amber-600  text-white' },
+  { key: 'slow',     label: 'Slow',      off: 'bg-blue-900/20   text-blue-400   border border-blue-800/40',    on: 'bg-blue-600   text-white' },
+  { key: 'fast',     label: 'Fast',      off: 'bg-orange-900/20 text-orange-400 border border-orange-800/40',  on: 'bg-orange-500 text-white' },
+  { key: 'sayAs',    label: 'Spell out', off: 'bg-teal-900/20   text-teal-400   border border-teal-800/40',    on: 'bg-teal-600   text-white' },
+  { key: 'pause',    label: '+ Pause',   off: 'bg-purple-900/20 text-purple-400 border border-purple-800/40',  on: 'bg-purple-600 text-white' },
+  { key: 'clear',    label: 'Clear',     off: 'bg-[var(--surface)] text-[var(--muted)] border border-transparent', on: 'bg-red-900/40 text-red-300 border border-red-600/40' },
+];
+
+const PAUSE_DURATIONS = [
+  { label: '¼s', ms: 250  },
+  { label: '½s', ms: 500  },
+  { label: '1s',  ms: 1000 },
+  { label: '2s',  ms: 2000 },
+] as const;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function pauseLabel(ms: number) {
   if (ms <= 300) return '¼s';
   if (ms <= 750) return '½s';
   if (ms <= 1250) return '1s';
   return '2s';
 }
 
-type EffectState = 'on' | 'mixed' | 'off';
-
-function effectState(annotations: WordAnnotation[], ids: Set<string>, key: 'emphasis'): EffectState;
-function effectState(annotations: WordAnnotation[], ids: Set<string>, key: 'slow' | 'fast'): EffectState;
-function effectState(annotations: WordAnnotation[], ids: Set<string>, key: 'emphasis' | 'slow' | 'fast'): EffectState {
-  const sel = annotations.filter(a => ids.has(a.id));
-  if (sel.length === 0) return 'off';
-  const has = (a: WordAnnotation) =>
-    key === 'emphasis' ? a.emphasis :
-    key === 'slow'     ? (a.rate !== null && a.rate < 1) :
-                         (a.rate !== null && a.rate >= 1);
-  if (sel.every(has)) return 'on';
-  if (sel.some(has))  return 'mixed';
-  return 'off';
-}
-
-function wordChipClass(ann: WordAnnotation, selected: boolean): string {
-  const base = 'min-h-[44px] px-3 py-2 rounded-xl text-sm font-medium leading-tight transition-colors select-none';
-  if (selected) return `${base} bg-indigo-600 text-white`;
+function wordChipClass(ann: WordAnnotation, active: boolean): string {
+  const base = 'min-h-[44px] px-3 py-2 rounded-xl text-sm font-medium leading-tight transition-all active:scale-95';
+  const ring = active ? ' ring-2 ring-white/30 ring-offset-1 ring-offset-[var(--background)]' : '';
   const { emphasis, rate, sayAs } = ann;
   const slow = rate !== null && rate < 1;
   const fast = rate !== null && rate >= 1;
-  if (emphasis && slow) return `${base} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold underline underline-offset-2 decoration-blue-400/60`;
-  if (emphasis && fast) return `${base} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold italic`;
-  if (emphasis)  return `${base} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold`;
-  if (slow)      return `${base} bg-blue-900/40 border border-blue-500/60 text-blue-200 underline underline-offset-2 decoration-blue-400/60`;
-  if (fast)      return `${base} bg-orange-900/40 border border-orange-500/60 text-orange-200 italic`;
-  if (sayAs)     return `${base} bg-teal-900/40 border border-teal-500/60 text-teal-200 tracking-widest`;
-  return `${base} bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)]`;
+  if (emphasis && slow) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold underline underline-offset-2 decoration-blue-400/60`;
+  if (emphasis && fast) return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold italic`;
+  if (emphasis)         return `${base}${ring} bg-amber-900/40 border border-amber-500/60 text-amber-200 font-semibold`;
+  if (slow)             return `${base}${ring} bg-blue-900/40   border border-blue-500/60   text-blue-200  underline underline-offset-2 decoration-blue-400/60`;
+  if (fast)             return `${base}${ring} bg-orange-900/40 border border-orange-500/60 text-orange-200 italic`;
+  if (sayAs)            return `${base}${ring} bg-teal-900/40   border border-teal-500/60   text-teal-200  tracking-widest`;
+  return `${base}${ring} bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)]`;
 }
 
 function effectDots(elements: SegmentElement[] | undefined) {
   if (!elements?.length) return [];
   return [
-    { show: elements.some(e => e.type === 'emphasis-open'),                                    color: 'bg-amber-500' },
-    { show: elements.some(e => e.type === 'prosody-open' && e.rate < 1),                       color: 'bg-blue-500' },
-    { show: elements.some(e => e.type === 'prosody-open' && e.rate >= 1),                      color: 'bg-orange-500' },
-    { show: elements.some(e => e.type === 'say-as'),                                           color: 'bg-teal-500' },
-    { show: elements.some(e => e.type === 'break'),                                            color: 'bg-purple-500' },
+    { show: elements.some(e => e.type === 'emphasis-open'),               color: 'bg-amber-500'  },
+    { show: elements.some(e => e.type === 'prosody-open' && e.rate < 1),  color: 'bg-blue-500'   },
+    { show: elements.some(e => e.type === 'prosody-open' && e.rate >= 1), color: 'bg-orange-500' },
+    { show: elements.some(e => e.type === 'say-as'),                      color: 'bg-teal-500'   },
+    { show: elements.some(e => e.type === 'break'),                       color: 'bg-purple-500' },
   ].filter(d => d.show);
 }
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
+// ─── Editor ──────────────────────────────────────────────────────────────────
 
-function Legend() {
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 text-xs text-[var(--muted)] border-b border-[var(--border)]">
-      {[
-        { color: 'bg-amber-500',  label: 'Emphasise' },
-        { color: 'bg-blue-500',   label: 'Slow' },
-        { color: 'bg-orange-500', label: 'Fast' },
-        { color: 'bg-teal-500',   label: 'Spell out' },
-        { color: 'bg-purple-500', label: 'Pause' },
-      ].map(({ color, label }) => (
-        <span key={label} className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${color} shrink-0`} />
-          {label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-interface ToolbarProps {
-  selectedCount: number;
-  emphasisState: EffectState;
-  slowState: EffectState;
-  fastState: EffectState;
-  sayAsOn: boolean;
-  onEmphasis: () => void;
-  onSlow: () => void;
-  onFast: () => void;
-  onPauseInsert: (ms: number) => void;
-  onSpellOut: () => void;
-  onClear: () => void;
-  onDone: () => void;
-}
-
-function EffectToolbar({
-  selectedCount, emphasisState, slowState, fastState, sayAsOn,
-  onEmphasis, onSlow, onFast, onPauseInsert, onSpellOut, onClear, onDone,
-}: ToolbarProps) {
-  const [showPause, setShowPause] = useState(false);
-
-  function btnClass(state: EffectState | boolean) {
-    if (state === 'on' || state === true)
-      return 'h-11 px-4 rounded-xl text-sm font-medium bg-[var(--primary)] text-white shrink-0';
-    if (state === 'mixed')
-      return 'h-11 px-4 rounded-xl text-sm font-medium border border-[var(--primary)] text-[var(--primary)] shrink-0';
-    return 'h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-[var(--foreground)] shrink-0';
-  }
-
-  if (showPause) {
-    return (
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--background)] border-t border-[var(--border)] pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto">
-          {([
-            { label: 'Short (¼s)', ms: 250 },
-            { label: 'Medium (½s)', ms: 500 },
-            { label: 'Long (1s)', ms: 1000 },
-            { label: 'Dramatic (2s)', ms: 2000 },
-          ] as const).map(({ label, ms }) => (
-            <button
-              key={ms}
-              onClick={() => { onPauseInsert(ms); setShowPause(false); }}
-              className="h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-[var(--foreground)] whitespace-nowrap shrink-0"
-            >
-              {label}
-            </button>
-          ))}
-          <div className="flex-1" />
-          <button onClick={() => setShowPause(false)} className="h-11 px-4 text-sm text-[var(--muted)] shrink-0">Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--background)] border-t border-[var(--border)] pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto">
-        <button onClick={onEmphasis}              className={btnClass(emphasisState)}>Emphasise</button>
-        <button onClick={onSlow}                  className={btnClass(slowState)}>Slow</button>
-        <button onClick={onFast}                  className={btnClass(fastState)}>Fast</button>
-        <button onClick={() => setShowPause(true)} className="h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-[var(--foreground)] shrink-0">+ Pause</button>
-        {selectedCount === 1 && (
-          <button onClick={onSpellOut} className={btnClass(sayAsOn)}>Spell out</button>
-        )}
-        <button onClick={onClear} className="h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-[var(--muted)] shrink-0">Clear</button>
-        <div className="flex-1 shrink-0 min-w-2" />
-        <button onClick={onDone} className="h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-[var(--foreground)] shrink-0">Done</button>
-      </div>
-    </div>
-  );
-}
-
-interface PauseSheetProps {
-  ms: number;
-  onSelect: (ms: number) => void;
-  onRemove: () => void;
-  onClose: () => void;
-}
-
-function PauseSheet({ ms, onSelect, onRemove, onClose }: PauseSheetProps) {
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--background)] border-t border-[var(--border)] pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto">
-        <span className="text-xs text-[var(--muted)] shrink-0 mr-1">Pause:</span>
-        {([
-          { label: '¼s', ms: 250 },
-          { label: '½s', ms: 500 },
-          { label: '1s', ms: 1000 },
-          { label: '2s', ms: 2000 },
-        ] as const).map((opt) => (
-          <button
-            key={opt.ms}
-            onClick={() => { onSelect(opt.ms); onClose(); }}
-            className={`h-11 px-4 rounded-xl text-sm font-medium shrink-0 ${
-              opt.ms === ms
-                ? 'bg-[var(--primary)] text-white'
-                : 'bg-[var(--surface)] text-[var(--foreground)]'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-        <button
-          onClick={() => { onRemove(); onClose(); }}
-          className="h-11 px-4 rounded-xl text-sm font-medium bg-[var(--surface)] text-red-400 shrink-0"
-        >
-          Remove
-        </button>
-        <div className="flex-1" />
-        <button onClick={onClose} className="h-11 px-4 text-sm text-[var(--muted)] shrink-0">✕</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Brick Editor ────────────────────────────────────────────────────────────
-
-interface EditorProps {
+function SegmentBrickEditor({
+  segmentId,
+  initialAnnotations,
+  ttsConfig,
+  onSave,
+}: {
   segmentId: string;
   initialAnnotations: WordAnnotation[];
   ttsConfig: TTSConfig | null;
   onSave: (segmentId: string, elements: SegmentElement[]) => Promise<void>;
-}
-
-type PlayState = 'idle' | 'loading' | 'playing' | 'error';
-
-function SegmentBrickEditor({ segmentId, initialAnnotations, ttsConfig, onSave }: EditorProps) {
-  const [annotations, setAnnotations] = useState<WordAnnotation[]>(initialAnnotations);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [pauseEditId, setPauseEditId] = useState<string | null>(null);
-  const [playState, setPlayState] = useState<PlayState>('idle');
-  const [playError, setPlayError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [savedBriefly, setSavedBriefly] = useState(false);
+}) {
+  const [annotations,   setAnnotations]   = useState(initialAnnotations);
+  const [activeMode,    setActiveMode]    = useState<EditorMode | null>(null);
+  const [pausePickerId, setPausePickerId] = useState<string | null>(null);
+  const [playState,     setPlayState]     = useState<PlayState>('idle');
+  const [playError,     setPlayError]     = useState<string | null>(null);
+  const [saving,        setSaving]        = useState(false);
+  const [dirty,         setDirty]         = useState(false);
+  const [savedBriefly,  setSavedBriefly]  = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const selected = useMemo(() => annotations.filter(a => selectedIds.has(a.id)), [annotations, selectedIds]);
-  const empState  = useMemo(() => effectState(annotations, selectedIds, 'emphasis'), [annotations, selectedIds]);
-  const slowState = useMemo(() => effectState(annotations, selectedIds, 'slow'),     [annotations, selectedIds]);
-  const fastState = useMemo(() => effectState(annotations, selectedIds, 'fast'),     [annotations, selectedIds]);
-  const sayAsOn   = selected.length === 1 && selected[0].sayAs !== null;
-
-  function toggleWord(id: string) {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-    setPauseEditId(null);
+  function toggleMode(mode: EditorMode) {
+    setPausePickerId(null);
+    setActiveMode(prev => prev === mode ? null : mode);
   }
 
-  function mutate(fn: (a: WordAnnotation) => WordAnnotation) {
-    setAnnotations(prev => prev.map(a => selectedIds.has(a.id) ? fn(a) : a));
+  function markDirty() {
     setDirty(true);
     setSavedBriefly(false);
   }
 
-  function applyEmphasis() {
-    const allOn = empState === 'on';
-    mutate(a => ({ ...a, emphasis: !allOn }));
-  }
+  function handleWordTap(ann: WordAnnotation) {
+    if (!activeMode) return;
 
-  function applySlow() {
-    const allOn = slowState === 'on';
-    mutate(a => ({ ...a, rate: allOn ? null : 0.7 }));
-  }
+    if (activeMode === 'pause') {
+      if (ann.pauseAfterMs !== null) {
+        // Remove existing pause
+        setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: null } : a));
+        if (pausePickerId === ann.id) setPausePickerId(null);
+      } else {
+        // Add default pause then open picker to refine duration
+        setAnnotations(prev => prev.map(a => a.id === ann.id ? { ...a, pauseAfterMs: 500 } : a));
+        setPausePickerId(ann.id);
+        setActiveMode(null);
+      }
+      markDirty();
+      return;
+    }
 
-  function applyFast() {
-    const allOn = fastState === 'on';
-    mutate(a => ({ ...a, rate: allOn ? null : 1.4 }));
-  }
-
-  function applySpellOut() {
-    if (selected.length !== 1) return;
-    const isOn = selected[0].sayAs !== null;
-    mutate(a => ({ ...a, sayAs: isOn ? null : 'characters' }));
-  }
-
-  function clearEffects() {
-    mutate(a => ({ ...a, emphasis: false, rate: null, sayAs: null }));
-  }
-
-  function deselectAll() {
-    setSelectedIds(new Set());
-  }
-
-  function insertPause(ms: number) {
-    if (selected.length === 0) return;
-    const lastSelectedId = [...selectedIds].at(-1) ?? selected[selected.length - 1].id;
     setAnnotations(prev => prev.map(a => {
-      if (a.id !== lastSelectedId) return a;
-      return { ...a, pauseAfterMs: ms }; // update if exists, insert if null
+      if (a.id !== ann.id) return a;
+      switch (activeMode) {
+        case 'emphasis': return { ...a, emphasis: !a.emphasis };
+        case 'slow':     return { ...a, rate: (a.rate !== null && a.rate < 1)  ? null : 0.7 };
+        case 'fast':     return { ...a, rate: (a.rate !== null && a.rate >= 1) ? null : 1.4 };
+        case 'sayAs':    return { ...a, sayAs: a.sayAs ? null : 'characters' };
+        case 'clear':    return { ...a, emphasis: false, rate: null, sayAs: null };
+        default:         return a;
+      }
     }));
-    setDirty(true);
-    setSavedBriefly(false);
+    markDirty();
   }
 
-  function editPause(id: string, ms: number) {
+  function handlePauseChipTap(id: string) {
+    setActiveMode(null);
+    setPausePickerId(prev => prev === id ? null : id);
+  }
+
+  function updatePause(id: string, ms: number) {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, pauseAfterMs: ms } : a));
-    setDirty(true);
-    setSavedBriefly(false);
+    markDirty();
   }
 
   function removePause(id: string) {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, pauseAfterMs: null } : a));
-    setDirty(true);
-    setSavedBriefly(false);
+    setPausePickerId(null);
+    markDirty();
   }
 
   async function handleTest() {
     if (!ttsConfig) return;
-
     if (playState === 'playing') {
       audioRef.current?.pause();
       audioRef.current = null;
       setPlayState('idle');
       return;
     }
-
     setPlayState('loading');
     setPlayError(null);
     try {
-      const elements = buildElements(annotations);
-      const ssml = buildSSML(elements);
-      const blob = await fetchTTSBlob(ssml, ttsConfig);
-      const url = URL.createObjectURL(blob);
+      const blob = await fetchTTSBlob(buildSSML(buildElements(annotations)), ttsConfig);
+      const url  = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
       audio.onended = () => { URL.revokeObjectURL(url); setPlayState('idle'); };
@@ -322,10 +180,11 @@ function SegmentBrickEditor({ segmentId, initialAnnotations, ttsConfig, onSave }
       await audio.play();
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      const errText = msg.includes('401') ? 'Azure key invalid — check Settings'
-        : msg.includes('429') ? 'Quota reached — try later'
-        : 'Test failed — check connection';
-      setPlayError(errText);
+      setPlayError(
+        msg.includes('401') ? 'Azure key invalid' :
+        msg.includes('429') ? 'Quota reached'     :
+        'Test failed'
+      );
       setPlayState('error');
       setTimeout(() => { setPlayState('idle'); setPlayError(null); }, 3000);
     }
@@ -338,66 +197,111 @@ function SegmentBrickEditor({ segmentId, initialAnnotations, ttsConfig, onSave }
       setDirty(false);
       setSavedBriefly(true);
       setTimeout(() => setSavedBriefly(false), 2000);
-    } catch {
-      // leave dirty so user can retry
     } finally {
       setSaving(false);
     }
   }
 
-  const showToolbar = selectedIds.size > 0 && pauseEditId === null;
-  const pauseEditAnnotation = pauseEditId ? annotations.find(a => a.id === pauseEditId) : null;
+  const pausePickerAnn = pausePickerId ? annotations.find(a => a.id === pausePickerId) : null;
 
   return (
-    <div className="flex flex-col">
-      <Legend />
+    <div>
+      {/* Mode strip — OR pause duration picker when editing a pause */}
+      <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto border-b border-[var(--border)] bg-[var(--background)]/60">
+        {pausePickerAnn ? (
+          <>
+            <span className="text-xs text-[var(--muted)] shrink-0 mr-0.5">Pause:</span>
+            {PAUSE_DURATIONS.map(({ label, ms }) => (
+              <button
+                key={ms}
+                onClick={() => { updatePause(pausePickerAnn.id, ms); setPausePickerId(null); }}
+                className={`h-10 px-3 rounded-xl text-sm font-medium shrink-0 transition-colors ${
+                  pausePickerAnn.pauseAfterMs === ms
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-[var(--surface)] text-[var(--foreground)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              onClick={() => removePause(pausePickerAnn.id)}
+              className="h-10 px-3 rounded-xl text-sm font-medium bg-[var(--surface)] text-red-400 shrink-0"
+            >
+              Remove
+            </button>
+            <div className="flex-1" />
+            <button
+              onClick={() => setPausePickerId(null)}
+              className="h-10 px-3 text-sm text-[var(--muted)] shrink-0"
+            >
+              ✕
+            </button>
+          </>
+        ) : (
+          MODES.map(({ key, label, off, on }) => (
+            <button
+              key={key}
+              onClick={() => toggleMode(key)}
+              className={`h-10 px-3 rounded-xl text-sm font-medium shrink-0 transition-colors ${
+                activeMode === key ? on : off
+              }`}
+            >
+              {label}
+            </button>
+          ))
+        )}
+      </div>
 
       {/* Word canvas */}
-      <div className="flex flex-wrap gap-1.5 px-3 py-3 pb-14">
+      <div className={`flex flex-wrap gap-1.5 px-3 py-3 ${activeMode ? 'cursor-pointer' : ''}`}>
         {annotations.map((ann) => (
           <span key={ann.id} className="contents">
             <button
-              onClick={() => toggleWord(ann.id)}
-              className={wordChipClass(ann, selectedIds.has(ann.id))}
+              onClick={() => handleWordTap(ann)}
+              disabled={!activeMode}
+              className={wordChipClass(ann, !!activeMode) + (!activeMode ? ' cursor-default' : '')}
             >
               {ann.text}
             </button>
             {ann.pauseAfterMs !== null && (
               <button
-                onClick={() => { deselectAll(); setPauseEditId(ann.id); }}
+                onClick={() => handlePauseChipTap(ann.id)}
                 className="flex flex-col items-center justify-center mx-0.5 shrink-0"
                 style={{ minWidth: 32, minHeight: 44 }}
-                aria-label={`Pause: ${ann.pauseAfterMs}ms`}
+                aria-label={`${pauseLabel(ann.pauseAfterMs)} pause — tap to edit`}
               >
-                <div className="w-0.5 h-4 bg-purple-500/70 rounded-full" />
-                <span className="text-[9px] text-purple-400 mt-0.5 leading-none">{pauseLabel(ann.pauseAfterMs)}</span>
+                <div className={`w-0.5 h-4 rounded-full transition-colors ${
+                  pausePickerId === ann.id ? 'bg-purple-300' : 'bg-purple-500/70'
+                }`} />
+                <span className="text-[9px] text-purple-400 mt-0.5 leading-none">
+                  {pauseLabel(ann.pauseAfterMs)}
+                </span>
               </button>
             )}
           </span>
         ))}
       </div>
 
-      {/* Footer bar */}
-      <div className="flex items-center gap-3 px-4 py-3 border-t border-[var(--border)]">
+      {/* Footer */}
+      <div className="flex items-center px-4 py-3 border-t border-[var(--border)] gap-4">
         <button
           onClick={handleTest}
           disabled={!ttsConfig || playState === 'loading'}
           className={`text-sm font-medium disabled:opacity-40 transition-colors ${
-            playState === 'playing' ? 'text-[var(--primary)]'
-            : playState === 'error' ? 'text-red-400'
-            : 'text-[var(--muted)]'
+            playState === 'playing' ? 'text-[var(--primary)]' :
+            playState === 'error'   ? 'text-red-400'          :
+            'text-[var(--muted)]'
           }`}
         >
-          {playState === 'loading' && 'Loading…'}
-          {playState === 'playing' && '■ Stop'}
-          {playState === 'error'   && (playError ?? 'Test failed')}
-          {playState === 'idle'    && (ttsConfig ? '▶ Test' : '▶ Test')}
+          {playState === 'loading' ? 'Loading…'                     :
+           playState === 'playing' ? '■ Stop'                       :
+           playState === 'error'   ? (playError ?? 'Test failed')   :
+           '▶ Test'}
         </button>
 
         {!ttsConfig && (
-          <span className="text-xs text-[var(--muted)]">
-            <a href="/settings" className="text-[var(--primary)]">Add Azure key</a> to test
-          </span>
+          <a href="/settings" className="text-xs text-[var(--primary)]">Add Azure key</a>
         )}
 
         <div className="flex-1" />
@@ -412,54 +316,27 @@ function SegmentBrickEditor({ segmentId, initialAnnotations, ttsConfig, onSave }
           {saving ? 'Saving…' : savedBriefly ? 'Saved ✓' : 'Save'}
         </button>
       </div>
-
-      {/* Effect toolbar (fixed bottom) */}
-      {showToolbar && (
-        <EffectToolbar
-          selectedCount={selectedIds.size}
-          emphasisState={empState}
-          slowState={slowState}
-          fastState={fastState}
-          sayAsOn={sayAsOn}
-          onEmphasis={applyEmphasis}
-          onSlow={applySlow}
-          onFast={applyFast}
-          onPauseInsert={insertPause}
-          onSpellOut={applySpellOut}
-          onClear={clearEffects}
-          onDone={deselectAll}
-        />
-      )}
-
-      {/* Pause edit sheet (fixed bottom) */}
-      {pauseEditAnnotation && (
-        <PauseSheet
-          ms={pauseEditAnnotation.pauseAfterMs!}
-          onSelect={(ms) => editPause(pauseEditAnnotation.id, ms)}
-          onRemove={() => removePause(pauseEditAnnotation.id)}
-          onClose={() => setPauseEditId(null)}
-        />
-      )}
     </div>
   );
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegmentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { clerkId } = useCurrentUser();
 
-  const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
+  const talk     = useQuery(api.talks.get,         { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
   const saveSegmentElements = useMutation(api.talks.saveSegmentElements);
 
   const provider = settings?.provider ?? 'elevenlabs';
-  const isAzure = provider === 'azure';
+  const isAzure  = provider === 'azure';
 
-  const ttsConfig: TTSConfig | null = settings && isAzure && settings.azureSubscriptionKey && settings.azureRegion
-    ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.voiceId }
-    : null;
+  const ttsConfig: TTSConfig | null =
+    settings && isAzure && settings.azureSubscriptionKey && settings.azureRegion
+      ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.voiceId }
+      : null;
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -487,20 +364,18 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
         <div className="w-12" />
       </header>
 
-      {!isAzure && (
+      {!isAzure ? (
         <div className="mx-4 mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-5">
-          <p className="text-sm font-medium text-[var(--foreground)] mb-1">Azure TTS required</p>
+          <p className="text-sm font-medium mb-1">Azure TTS required</p>
           <p className="text-xs text-[var(--muted)]">
             The brick editor uses SSML and requires Azure TTS. Switch your provider in{' '}
             <a href="/settings" className="text-[var(--primary)]">Settings</a>.
           </p>
         </div>
-      )}
-
-      {isAzure && (
+      ) : (
         <main className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           <p className="text-xs text-[var(--muted)] px-1">
-            Tap words to select them, then use the toolbar to apply effects.
+            Expand a segment, pick a mode, then tap words to apply it.
           </p>
 
           {talk!.segments.map((seg) => {
@@ -515,7 +390,7 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
                 key={seg.id}
                 className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] overflow-hidden"
               >
-                {/* Collapsed header */}
+                {/* Header */}
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : seg.id)}
                   className="w-full flex items-center gap-3 px-4 py-4 text-left"
@@ -535,7 +410,7 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
                   </div>
                 </button>
 
-                {/* Expanded editor */}
+                {/* Editor */}
                 {isExpanded && (
                   <div className="border-t border-[var(--border)]">
                     <SegmentBrickEditor
