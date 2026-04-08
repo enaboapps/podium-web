@@ -182,8 +182,8 @@ export default function OnlineLibraryPage() {
         segmentMode: importDraft.mode,
       });
       setImportDraft(null);
-    } catch {
-      setImportError('Failed to save talk. Please try again.');
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Failed to save talk. Please try again.');
     } finally {
       setImporting(false);
     }
