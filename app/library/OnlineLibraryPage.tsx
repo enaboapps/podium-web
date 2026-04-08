@@ -164,9 +164,14 @@ export default function OnlineLibraryPage() {
   }
 
   async function handleConfirmImport() {
-    if (!clerkId || !importDraft) return;
+    if (!importDraft) return;
+    if (!clerkId) {
+      setImportError('Unable to save — please check your connection and try again.');
+      return;
+    }
 
     setImporting(true);
+    setImportError('');
     try {
       const segments = previewSegments.map((text, index) => ({ id: String(index), text }));
       await createTalkWithSegments({
@@ -177,8 +182,8 @@ export default function OnlineLibraryPage() {
         segmentMode: importDraft.mode,
       });
       setImportDraft(null);
-    } catch {
-      setImportError('Failed to save talk.');
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Failed to save talk. Please try again.');
     } finally {
       setImporting(false);
     }
@@ -262,7 +267,7 @@ export default function OnlineLibraryPage() {
           <TalkList
             confirmDeleteId={confirmDeleteId}
             createMode={createMode}
-            importError={importError}
+            importError=""
             newTalkTitle={newTalkTitle}
             setsAvailable={(sets?.length ?? 0) > 0}
             talkStatuses={talkStatuses}
@@ -312,7 +317,8 @@ export default function OnlineLibraryPage() {
         importDraft={importDraft}
         importing={importing}
         previewSegments={previewSegments}
-        onClose={() => setImportDraft(null)}
+        error={importError}
+        onClose={() => { setImportDraft(null); setImportError(''); }}
         onConfirm={handleConfirmImport}
         onModeChange={(mode: SegmentMode) => {
           if (!importDraft) return;

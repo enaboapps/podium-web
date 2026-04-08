@@ -8,6 +8,7 @@ interface ImportTalkSheetProps {
   importDraft: ImportDraft | null;
   importing: boolean;
   previewSegments: string[];
+  error?: string;
   onClose: () => void;
   onConfirm: () => void;
   onModeChange: (mode: SegmentMode) => void;
@@ -18,6 +19,7 @@ export function ImportTalkSheet({
   importDraft,
   importing,
   previewSegments,
+  error,
   onClose,
   onConfirm,
   onModeChange,
@@ -71,6 +73,10 @@ export function ImportTalkSheet({
             {previewSegments.length} segments
           </span>
         </div>
+
+        {error ? (
+          <p className="shrink-0 px-5 py-2 text-sm text-red-400">{error}</p>
+        ) : null}
 
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3">
           {previewSegments.slice(0, PREVIEW_CAP).map((text, index) => (
