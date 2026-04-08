@@ -133,9 +133,9 @@ export default function OnlineLibraryPage() {
   }
 
   function openImport() {
-    closeFab();
     setImportError('');
-    setTimeout(() => fileInputRef.current?.click(), 50);
+    fileInputRef.current?.click();
+    closeFab();
   }
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
