@@ -10,6 +10,7 @@ import { useOfflineLibrarySync } from '@/hooks/useOfflineLibrarySync';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { parseFile, splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { getTalkPreparedState, type CachedTalkStatus } from '@/lib/offlineStore';
+import OfflineLibraryPage from './OfflineLibraryPage';
 
 const PREVIEW_CAP = 100;
 
@@ -26,7 +27,7 @@ interface ImportDraft {
 
 export default function OnlineLibraryPage() {
   const { clerkId } = useOnlineCurrentUser();
-  const { refreshOfflineBootstrap } = useOfflineBoot();
+  const { library, refreshOfflineBootstrap } = useOfflineBoot();
   const [tab, setTab] = useState<Tab>('talks');
   const [createMode, setCreateMode] = useState<CreateMode>('none');
   const [newTalkTitle, setNewTalkTitle] = useState('');
@@ -39,6 +40,7 @@ export default function OnlineLibraryPage() {
   const [assignTalkId, setAssignTalkId] = useState<string | null>(null);
   const [talkStatuses, setTalkStatuses] = useState<Record<string, CachedTalkStatus>>({});
   const [statusesReady, setStatusesReady] = useState(false);
+  const [forceOfflineFallback, setForceOfflineFallback] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -58,6 +60,21 @@ export default function OnlineLibraryPage() {
       ? splitIntoSentences(importDraft.paragraphs)
       : importDraft.paragraphs;
   }, [importDraft]);
+
+  useEffect(() => {
+    if (talks !== undefined && sets !== undefined) {
+      setForceOfflineFallback(false);
+      return;
+    }
+
+    if (!library) return;
+
+    const timeout = setTimeout(() => {
+      setForceOfflineFallback(true);
+    }, 2500);
+
+    return () => clearTimeout(timeout);
+  }, [library, sets, talks]);
 
   useEffect(() => {
     if (!clerkId || !talks) {
@@ -191,6 +208,10 @@ export default function OnlineLibraryPage() {
     : syncState === 'error'
       ? 'text-red-400'
       : 'text-[var(--muted)]';
+
+  if (forceOfflineFallback && library) {
+    return <OfflineLibraryPage />;
+  }
 
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">

@@ -4,17 +4,20 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { getCachedAudio, saveTalkData, setCachedAudio } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { buildSSML, SegmentElement } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
+import OfflineTalkPage from './OfflineTalkPage';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
 export default function OnlineTalkPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { clerkId } = useOnlineCurrentUser();
+  const { library } = useOfflineBoot();
 
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
@@ -27,6 +30,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheFailed, setCacheFailed] = useState(false);
   const [cacheChecked, setCacheChecked] = useState(false);
+  const [forceOfflineFallback, setForceOfflineFallback] = useState(false);
 
   const provider = settings?.provider ?? 'elevenlabs';
   const isAzure = provider === 'azure';
@@ -49,6 +53,21 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const effectiveTalk = talk ?? undefined;
   const segments = useMemo(() => effectiveTalk?.segments ?? [], [effectiveTalk]);
   const voiceKey = `${provider}:${settings?.voiceId ?? 'default'}`;
+
+  useEffect(() => {
+    if (talk !== undefined) {
+      setForceOfflineFallback(false);
+      return;
+    }
+
+    if (!library) return;
+
+    const timeout = setTimeout(() => {
+      setForceOfflineFallback(true);
+    }, 2500);
+
+    return () => clearTimeout(timeout);
+  }, [library, talk]);
 
   useEffect(() => {
     if (!talk) return;
@@ -228,6 +247,10 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     audioRef.current = null;
     setSpeakState('idle');
     setIndex((prev) => prev - 1);
+  }
+
+  if (forceOfflineFallback && library) {
+    return <OfflineTalkPage params={params} />;
   }
 
   if (effectiveTalk === undefined) {
