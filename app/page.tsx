@@ -1,15 +1,19 @@
-'use client';
+import type { Metadata } from 'next';
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+import { LandingPage } from '@/components/home/LandingPage';
 
-import { useEffect } from 'react';
+export const metadata: Metadata = {
+  title: 'Podium | Reliable speech delivery',
+  description: 'Prepare talks, choose a voice, and stay ready to present even when connectivity drops.',
+};
 
-export default function Home() {
-  useEffect(() => {
-    window.location.replace('/library');
-  }, []);
+export default async function Home() {
+  const { userId } = await auth();
 
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
-      <p className="text-sm text-[var(--muted)]">Opening library...</p>
-    </div>
-  );
+  if (userId) {
+    redirect('/library');
+  }
+
+  return <LandingPage />;
 }
