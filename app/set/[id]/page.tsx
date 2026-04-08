@@ -4,11 +4,28 @@ import { use, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 
 export default function SetPage({ params }: { params: Promise<{ id: string }> }) {
+  const { mode } = useOfflineBoot();
+
+  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
+    return (
+      <OfflineUnavailable
+        title="Sets unavailable offline"
+        message="Set details are not available in Podium's offline emergency mode yet."
+      />
+    );
+  }
+
+  return <OnlineSetPage params={params} />;
+}
+
+function OnlineSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { clerkId } = useCurrentUser();
+  const { clerkId } = useOnlineCurrentUser();
 
   const set = useQuery(api.talkSets.get, { id: id as Id<'talkSets'> });
   const allTalks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -61,7 +78,11 @@ export default function SetPage({ params }: { params: Promise<{ id: string }> })
             {confirmRemoveId === talk._id ? (
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => { clerkId && removeTalk({ id: id as Id<'talkSets'>, userId: clerkId, talkId: talk._id }); setConfirmRemoveId(null); }}
+                  onClick={() => {
+                    if (!clerkId) return;
+                    void removeTalk({ id: id as Id<'talkSets'>, userId: clerkId, talkId: talk._id });
+                    setConfirmRemoveId(null);
+                  }}
                   className="text-red-400 text-xs px-2 py-1 rounded transition-colors"
                 >
                   Remove

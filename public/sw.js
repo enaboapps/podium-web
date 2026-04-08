@@ -1,42 +1,105 @@
-const CACHE = 'podium-v1';
+const CACHE = 'podium-v3';
+const OFFLINE_URL = '/offline.html';
+const CLERK_HOST = 'clerk.podiumspeak.xyz';
+const PRECACHE_URLS = [
+  OFFLINE_URL,
+  '/manifest.json',
+  '/favicon.ico',
+  '/icons/apple-touch-icon.png',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+];
 
-// Cache Next.js static assets with cache-first (filenames are content-hashed)
-// Cache navigation requests with network-first, falling back to cache when offline
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((cache) => cache.addAll(PRECACHE_URLS))
+      .then(() => self.skipWaiting())
+  );
+});
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
-self.addEventListener('fetch', (e) => {
-  const { request } = e;
+function cacheFirst(request) {
+  return caches.open(CACHE).then(async (cache) => {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  });
+}
+
+function staleWhileRevalidate(request) {
+  return caches.open(CACHE).then(async (cache) => {
+    const cached = await cache.match(request);
+    const networkPromise = fetch(request)
+      .then((response) => {
+        if (response) {
+          cache.put(request, response.clone());
+        }
+        return response;
+      })
+      .catch(() => cached);
+
+    return cached || networkPromise;
+  });
+}
+
+function navigationFallback(cache, request) {
+  return cache.match(request)
+    .then((response) => response || cache.match('/library'))
+    .then((response) => response || cache.match(OFFLINE_URL));
+}
+
+function networkFirstNavigation(request) {
+  return caches.open(CACHE).then(async (cache) => {
+    try {
+      const response = await fetch(request);
+      if (response && response.ok) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    } catch {
+      return navigationFallback(cache, request);
+    }
+  });
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
 
-  // Next.js static chunks — cache-first (content-hashed, safe to cache forever)
-  if (url.pathname.startsWith('/_next/static/')) {
-    e.respondWith(
-      caches.open(CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        if (cached) return cached;
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone());
-        return response;
-      })
-    );
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstNavigation(request));
     return;
   }
 
-  // Navigation — network-first, fall back to cache when offline
-  if (request.mode === 'navigate') {
-    e.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
-          }
-          return response;
-        })
-        .catch(() => caches.match(request))
-    );
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  if (
+    url.origin === self.location.origin &&
+    (
+      url.pathname.startsWith('/icons/') ||
+      url.pathname === '/manifest.json' ||
+      url.pathname === '/favicon.ico'
+    )
+  ) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  if (url.hostname === CLERK_HOST) {
+    event.respondWith(staleWhileRevalidate(request));
   }
 });

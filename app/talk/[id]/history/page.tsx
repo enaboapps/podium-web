@@ -5,14 +5,32 @@ import { useQuery, useMutation } from 'convex/react';
 import { diffWords } from 'diff';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { clearTalkAudio } from '@/lib/audioStore';
+import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 type ViewMode = 'preview' | 'diff';
 
 export default function HistoryPage({ params }: { params: Promise<{ id: string }> }) {
+  const { mode } = useOfflineBoot();
+
+  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
+    return (
+      <OfflineUnavailable
+        title="History unavailable offline"
+        message="Version history is not available in Podium's offline emergency mode."
+      />
+    );
+  }
+
+  return <OnlineHistoryPage params={params} />;
+}
+
+function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { clerkId } = useCurrentUser();
+  const { clerkId } = useOnlineCurrentUser();
 
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const versions = useQuery(api.talks.getVersions, { talkId: id as Id<'talks'> });
@@ -29,6 +47,16 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
     try {
       await restoreVersion({ talkId: id as Id<'talks'>, versionId, userId: clerkId });
       await clearTalkAudio(id);
+      if (talk) {
+        await saveTalkPreparedState(clerkId, id, {
+          talkId: id,
+          hasDocument: true,
+          hasAudio: false,
+          segmentCount: talk.segments.length,
+          cachedAudioSegments: 0,
+          lastPreparedAt: null,
+        });
+      }
       setRestored(versionId);
     } finally {
       setRestoring(null);
