@@ -4,10 +4,11 @@ import type { CachedTalkStatus } from '@/lib/offlineStore';
 
 interface OfflineStatusBadgeProps {
   status?: CachedTalkStatus;
+  documentAvailable?: boolean;
 }
 
-export function OfflineStatusBadge({ status }: OfflineStatusBadgeProps) {
-  if (!status?.hasDocument) {
+export function OfflineStatusBadge({ status, documentAvailable = false }: OfflineStatusBadgeProps) {
+  if (!status?.hasDocument && !documentAvailable) {
     return (
       <span className="rounded-full border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]">
         Not prepared
@@ -15,7 +16,7 @@ export function OfflineStatusBadge({ status }: OfflineStatusBadgeProps) {
     );
   }
 
-  if (!status.hasAudio) {
+  if (!status?.hasAudio) {
     return (
       <span className="rounded-full border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]">
         Document only

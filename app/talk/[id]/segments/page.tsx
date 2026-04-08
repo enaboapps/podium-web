@@ -16,7 +16,7 @@ import {
   tokenise,
 } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
-import { clearTalkAudio } from '@/lib/audioStore';
+import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
 import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -419,6 +419,16 @@ function OnlineSegmentsPage({ params }: { params: Promise<{ id: string }> }) {
     async (segmentId: string, elements: SegmentElement[]) => {
       if (!clerkId) return;
       await saveSegmentElements({ id: id as Id<'talks'>, userId: clerkId, segmentId, elements });
+      if (talk) {
+        await saveTalkData(id, {
+          _id: id,
+          title: talk.title,
+          segments: talk.segments.map((segment) => (
+            segment.id === segmentId ? { ...segment, elements } : segment
+          )),
+          updatedAt: Date.now(),
+        });
+      }
       await clearTalkAudio(id);
       if (talk) {
         await saveTalkPreparedState(clerkId, id, {

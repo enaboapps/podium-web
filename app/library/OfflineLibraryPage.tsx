@@ -1,16 +1,40 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OfflineBanner } from '@/components/offline/OfflineBanner';
 import { OfflineStatusBadge } from '@/components/offline/OfflineStatusBadge';
 import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { listTalkData } from '@/lib/audioStore';
 
 type Tab = 'talks' | 'sets';
 
 export default function OfflineLibraryPage() {
-  const { library, lastSyncedAt } = useOfflineBoot();
+  const { library, lastSyncedAt, syncState } = useOfflineBoot();
   const [tab, setTab] = useState<Tab>('talks');
+  const [cachedTalkIds, setCachedTalkIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCachedTalks() {
+      const talks = await listTalkData();
+      if (cancelled) return;
+      setCachedTalkIds(new Set(talks.map((talk) => talk._id)));
+    }
+
+    void loadCachedTalks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const partialDetail = useMemo(() => (
+    syncState === 'partial'
+      ? 'Recovered cached talks from this device. Some set or readiness metadata may be incomplete.'
+      : undefined
+  ), [syncState]);
 
   if (!library) {
     return (
@@ -29,7 +53,7 @@ export default function OfflineLibraryPage() {
       </header>
 
       <div className="px-4 pt-4">
-        <OfflineBanner lastSyncedAt={lastSyncedAt} />
+        <OfflineBanner lastSyncedAt={lastSyncedAt} detail={partialDetail} />
       </div>
 
       <div className="mt-4 flex border-y border-[var(--border)]">
@@ -56,7 +80,7 @@ export default function OfflineLibraryPage() {
             )}
             {library.talks.map((talk) => {
               const status = library.talkStatusById[talk._id];
-              const canOpen = !!status?.hasDocument;
+              const canOpen = status?.hasDocument || cachedTalkIds.has(talk._id);
 
               return (
                 <div key={talk._id} className="flex items-center justify-between bg-[var(--surface)] rounded-xl px-4 py-4 gap-3">
@@ -69,7 +93,10 @@ export default function OfflineLibraryPage() {
                       <span className="block truncate font-medium text-[var(--muted)]">{talk.title}</span>
                     )}
                     <div className="mt-2">
-                      <OfflineStatusBadge status={status} />
+                      <OfflineStatusBadge
+                        status={status}
+                        documentAvailable={cachedTalkIds.has(talk._id)}
+                      />
                     </div>
                   </div>
                   {!canOpen && (
