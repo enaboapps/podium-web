@@ -1,3 +1,5 @@
+import { AzureTTSClient, ElevenLabsTTSClient } from 'js-tts-wrapper/browser';
+
 export const DEFAULT_VOICE_ID = 'bIHbv24MWmeRgasZH58o'; // Will (ElevenLabs)
 // GuyNeural is one of three voices that support <emphasis> in Azure Neural TTS
 export const DEFAULT_AZURE_VOICE = 'en-US-GuyNeural';
@@ -12,22 +14,27 @@ export interface TTSVoice {
   previewUrl?: string;
 }
 
+function createClient(config: TTSConfig) {
+  if (config.provider === 'azure') {
+    const client = new AzureTTSClient({ subscriptionKey: config.subscriptionKey, region: config.region });
+    if (config.voiceId) client.setVoice(config.voiceId);
+    return client;
+  }
+  const client = new ElevenLabsTTSClient({ apiKey: config.apiKey });
+  if (config.voiceId) client.setVoice(config.voiceId);
+  return client;
+}
+
 export async function fetchTTSBlob(text: string, config: TTSConfig): Promise<Blob> {
-  const res = await fetch('/api/tts/speak', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, config }),
-  });
-  if (!res.ok) throw new Error(`TTS error: ${res.status}`);
-  return res.blob();
+  const client = createClient(config);
+  const bytes = await client.synthToBytes(text);
+  return new Blob([bytes.buffer as ArrayBuffer]);
 }
 
 export async function fetchVoices(config: TTSConfig): Promise<TTSVoice[]> {
-  const res = await fetch('/api/tts/voices', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config }),
-  });
-  if (!res.ok) throw new Error(`Voices error: ${res.status}`);
-  return res.json();
+  const client = createClient(config);
+  const voices = await client.getVoices();
+  return voices
+    .map((v) => ({ id: v.id, name: v.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
