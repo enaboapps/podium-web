@@ -5,27 +5,21 @@ import { useQuery, useMutation } from 'convex/react';
 import { diffWords } from 'diff';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
-import { saveTalkPreparedState } from '@/lib/offlineStore';
+import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
 
 type ViewMode = 'preview' | 'diff';
 
 export default function HistoryPage({ params }: { params: Promise<{ id: string }> }) {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="History unavailable offline"
-        message="Version history is not available in Podium's offline emergency mode."
-      />
-    );
-  }
-
-  return <OnlineHistoryPage params={params} />;
+  return (
+    <OfflineGate
+      unavailableTitle="History unavailable offline"
+      unavailableMessage="Version history is not available in Podium's offline emergency mode."
+    >
+      <OnlineHistoryPage params={params} />
+    </OfflineGate>
+  );
 }
 
 function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -48,22 +42,11 @@ function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
       await restoreVersion({ talkId: id as Id<'talks'>, versionId, userId: clerkId });
       const restoredVersion = versions?.find((version) => version._id === versionId);
       if (restoredVersion && talk) {
-        await saveTalkData(id, {
-          _id: id,
+        await invalidateTalkOfflineState({
+          userId: clerkId,
+          talkId: id,
           title: talk.title,
           segments: restoredVersion.segments,
-          updatedAt: Date.now(),
-        });
-      }
-      await clearTalkAudio(id);
-      if (talk) {
-        await saveTalkPreparedState(clerkId, id, {
-          talkId: id,
-          hasDocument: true,
-          hasAudio: false,
-          segmentCount: talk.segments.length,
-          cachedAudioSegments: 0,
-          lastPreparedAt: null,
         });
       }
       setRestored(versionId);

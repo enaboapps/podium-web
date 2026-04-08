@@ -4,8 +4,7 @@ import { use, useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import {
   SegmentElement,
@@ -16,8 +15,7 @@ import {
   tokenise,
 } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
-import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
-import { saveTalkPreparedState } from '@/lib/offlineStore';
+import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -383,18 +381,14 @@ function SegmentBrickEditor({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegmentsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="Segments unavailable offline"
-        message="The segment editor is not available in Podium's offline emergency mode."
-      />
-    );
-  }
-
-  return <OnlineSegmentsPage params={params} />;
+  return (
+    <OfflineGate
+      unavailableTitle="Segments unavailable offline"
+      unavailableMessage="The segment editor is not available in Podium's offline emergency mode."
+    >
+      <OnlineSegmentsPage params={params} />
+    </OfflineGate>
+  );
 }
 
 function OnlineSegmentsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -420,24 +414,13 @@ function OnlineSegmentsPage({ params }: { params: Promise<{ id: string }> }) {
       if (!clerkId) return;
       await saveSegmentElements({ id: id as Id<'talks'>, userId: clerkId, segmentId, elements });
       if (talk) {
-        await saveTalkData(id, {
-          _id: id,
+        await invalidateTalkOfflineState({
+          userId: clerkId,
+          talkId: id,
           title: talk.title,
           segments: talk.segments.map((segment) => (
             segment.id === segmentId ? { ...segment, elements } : segment
           )),
-          updatedAt: Date.now(),
-        });
-      }
-      await clearTalkAudio(id);
-      if (talk) {
-        await saveTalkPreparedState(clerkId, id, {
-          talkId: id,
-          hasDocument: true,
-          hasAudio: false,
-          segmentCount: talk.segments.length,
-          cachedAudioSegments: 0,
-          lastPreparedAt: null,
         });
       }
     },

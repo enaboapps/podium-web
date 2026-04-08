@@ -1,26 +1,19 @@
 'use client';
 
 import { SignUp } from '@clerk/nextjs';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 
 export default function SignUpPage() {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="Sign up requires a connection"
-        message="Podium cannot create an account while offline. Reconnect to continue."
-        href="/library"
-        actionLabel="Back to library"
-      />
-    );
-  }
-
   return (
-    <div className="flex min-h-dvh items-center justify-center">
-      <SignUp />
-    </div>
+    <OfflineGate
+      unavailableTitle="Sign up requires a connection"
+      unavailableMessage="Podium cannot create an account while offline. Reconnect to continue."
+      href="/library"
+      actionLabel="Back to library"
+    >
+      <div className="flex min-h-dvh items-center justify-center">
+        <SignUp />
+      </div>
+    </OfflineGate>
   );
 }

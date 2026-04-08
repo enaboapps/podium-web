@@ -3,26 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { fetchVoices, TTSConfig, TTSVoice, DEFAULT_VOICE_ID } from '@/lib/tts';
 
 const MASKED = '••••••••••••••••';
 
 export default function SettingsPage() {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="Settings unavailable offline"
-        message="Settings require a live connection and are not part of Podium's offline emergency mode."
-      />
-    );
-  }
-
-  return <OnlineSettingsPage />;
+  return (
+    <OfflineGate
+      unavailableTitle="Settings unavailable offline"
+      unavailableMessage="Settings require a live connection and are not part of Podium's offline emergency mode."
+    >
+      <OnlineSettingsPage />
+    </OfflineGate>
+  );
 }
 
 function OnlineSettingsPage() {
