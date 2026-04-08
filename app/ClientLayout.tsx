@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ClerkProvider, useAuth } from '@clerk/nextjs';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { ConvexReactClient } from 'convex/react';
+import { OfflineBooting } from '@/components/offline/OfflineBooting';
+import { OfflineBootProvider, useOfflineBoot } from '@/hooks/useOfflineBoot';
 
 function ConvexClerkProvider({ children }: { children: React.ReactNode }) {
   const convex = useMemo(() => {
@@ -19,14 +21,42 @@ function ConvexClerkProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+function OnlineRuntimeReady({ children }: { children: React.ReactNode }) {
+  const { isLoaded } = useAuth();
+  const { markOnlineRuntimeReady } = useOfflineBoot();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    markOnlineRuntimeReady();
+  }, [isLoaded, markOnlineRuntimeReady]);
+
+  return <>{children}</>;
+}
+
+function AppRuntimeBoundary({ children }: { children: React.ReactNode }) {
+  const { mode } = useOfflineBoot();
+
+  if (mode === 'booting') {
+    return <OfflineBooting />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider>
-      <ConvexClerkProvider>
-        <main className="min-h-dvh">
-          {children}
-        </main>
-      </ConvexClerkProvider>
+      <OfflineBootProvider>
+        <ConvexClerkProvider>
+          <OnlineRuntimeReady>
+            <AppRuntimeBoundary>
+              <main className="min-h-dvh">
+                {children}
+              </main>
+            </AppRuntimeBoundary>
+          </OnlineRuntimeReady>
+        </ConvexClerkProvider>
+      </OfflineBootProvider>
     </ClerkProvider>
   );
 }

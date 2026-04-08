@@ -3,13 +3,30 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { fetchVoices, TTSConfig, TTSVoice, DEFAULT_VOICE_ID } from '@/lib/tts';
 
 const MASKED = '••••••••••••••••';
 
 export default function SettingsPage() {
-  const { clerkId } = useCurrentUser();
+  const { mode } = useOfflineBoot();
+
+  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
+    return (
+      <OfflineUnavailable
+        title="Settings unavailable offline"
+        message="Settings require a live connection and are not part of Podium's offline emergency mode."
+      />
+    );
+  }
+
+  return <OnlineSettingsPage />;
+}
+
+function OnlineSettingsPage() {
+  const { clerkId } = useOnlineCurrentUser();
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
   const saveApiKey = useMutation(api.users.saveApiKey);
   const clearApiKey = useMutation(api.users.clearApiKey);

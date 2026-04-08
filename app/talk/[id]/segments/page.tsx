@@ -4,7 +4,9 @@ import { use, useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import {
   SegmentElement,
   WordAnnotation,
@@ -14,6 +16,8 @@ import {
   tokenise,
 } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
+import { clearTalkAudio } from '@/lib/audioStore';
+import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -286,7 +290,7 @@ function SegmentBrickEditor({
             </button>
           </>
         ) : (
-          MODES.map((mode, i) => {
+          MODES.map((mode) => {
             const isPauseGroupStart = mode.key === 'pause-250';
             return (
               <span key={mode.key} className="contents">
@@ -379,8 +383,23 @@ function SegmentBrickEditor({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegmentsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { mode } = useOfflineBoot();
+
+  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
+    return (
+      <OfflineUnavailable
+        title="Segments unavailable offline"
+        message="The segment editor is not available in Podium's offline emergency mode."
+      />
+    );
+  }
+
+  return <OnlineSegmentsPage params={params} />;
+}
+
+function OnlineSegmentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { clerkId } = useCurrentUser();
+  const { clerkId } = useOnlineCurrentUser();
 
   const talk     = useQuery(api.talks.get,         { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
@@ -400,8 +419,19 @@ export default function SegmentsPage({ params }: { params: Promise<{ id: string 
     async (segmentId: string, elements: SegmentElement[]) => {
       if (!clerkId) return;
       await saveSegmentElements({ id: id as Id<'talks'>, userId: clerkId, segmentId, elements });
+      await clearTalkAudio(id);
+      if (talk) {
+        await saveTalkPreparedState(clerkId, id, {
+          talkId: id,
+          hasDocument: true,
+          hasAudio: false,
+          segmentCount: talk.segments.length,
+          cachedAudioSegments: 0,
+          lastPreparedAt: null,
+        });
+      }
     },
-    [id, clerkId, saveSegmentElements]
+    [clerkId, id, saveSegmentElements, talk]
   );
 
   if (talk === undefined) {
