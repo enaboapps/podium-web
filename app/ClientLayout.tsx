@@ -4,8 +4,14 @@ import { useEffect, useMemo } from 'react';
 import { ClerkProvider, useAuth } from '@clerk/nextjs';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { ConvexReactClient } from 'convex/react';
+import { usePathname } from 'next/navigation';
 import { OfflineBooting } from '@/components/offline/OfflineBooting';
 import { OfflineBootProvider, useOfflineBoot } from '@/hooks/useOfflineBoot';
+
+function isPublicRoute(pathname: string | null) {
+  if (!pathname) return false;
+  return pathname === '/' || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
+}
 
 function ConvexClerkProvider({ children }: { children: React.ReactNode }) {
   const convex = useMemo(() => {
@@ -35,8 +41,9 @@ function OnlineRuntimeReady({ children }: { children: React.ReactNode }) {
 
 function AppRuntimeBoundary({ children }: { children: React.ReactNode }) {
   const { mode } = useOfflineBoot();
+  const pathname = usePathname();
 
-  if (mode === 'booting') {
+  if (!isPublicRoute(pathname) && mode === 'booting') {
     return <OfflineBooting />;
   }
 
