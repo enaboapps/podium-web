@@ -4,14 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Doc, Id } from '@/convex/_generated/dataModel';
+import { OfflineStatusBadge } from '@/components/offline/OfflineStatusBadge';
+import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { useOfflineLibrarySync } from '@/hooks/useOfflineLibrarySync';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { parseFile, splitIntoSentences, joinFullText } from '@/lib/parseFile';
-import {
-  getTalkPreparedState,
-  saveLibrarySnapshot,
-  type CachedTalkStatus,
-} from '@/lib/offlineStore';
-import { OfflineStatusBadge } from '@/components/offline/OfflineStatusBadge';
+import { getTalkPreparedState, type CachedTalkStatus } from '@/lib/offlineStore';
 
 const PREVIEW_CAP = 100;
 
@@ -28,6 +26,7 @@ interface ImportDraft {
 
 export default function OnlineLibraryPage() {
   const { clerkId } = useOnlineCurrentUser();
+  const { refreshOfflineBootstrap } = useOfflineBoot();
   const [tab, setTab] = useState<Tab>('talks');
   const [createMode, setCreateMode] = useState<CreateMode>('none');
   const [newTalkTitle, setNewTalkTitle] = useState('');
@@ -39,6 +38,7 @@ export default function OnlineLibraryPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [assignTalkId, setAssignTalkId] = useState<string | null>(null);
   const [talkStatuses, setTalkStatuses] = useState<Record<string, CachedTalkStatus>>({});
+  const [statusesReady, setStatusesReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const talks = useQuery(api.talks.list, clerkId ? { userId: clerkId } : 'skip');
@@ -60,45 +60,51 @@ export default function OnlineLibraryPage() {
   }, [importDraft]);
 
   useEffect(() => {
-    if (!clerkId || !talks || !sets) return;
+    if (!clerkId || !talks) {
+      setStatusesReady(false);
+      return;
+    }
 
     const userId = clerkId;
     const liveTalks = talks;
-    const liveSets = sets;
     let cancelled = false;
+    setStatusesReady(false);
 
-    async function persistSnapshot() {
-      const statusEntries = await Promise.all(
+    async function loadStatuses() {
+      const entries = await Promise.all(
         liveTalks.map(async (talk) => {
           const status = await getTalkPreparedState(userId, talk._id);
-          return [talk._id, status] as const;
+          return [talk._id, status ?? {
+            talkId: talk._id,
+            hasDocument: true,
+            hasAudio: false,
+            segmentCount: talk.segments.length,
+            cachedAudioSegments: 0,
+            lastPreparedAt: null,
+          }] as const;
         })
       );
 
       if (cancelled) return;
 
-      const talkStatusById: Record<string, CachedTalkStatus> = {};
-      statusEntries.forEach(([talkId, status]) => {
-        if (!status) return;
-        talkStatusById[talkId] = status;
-      });
-
-      setTalkStatuses(talkStatusById);
-
-      await saveLibrarySnapshot(
-        userId,
-        liveTalks.map((talk) => ({ _id: talk._id, title: talk.title })),
-        liveSets.map((set) => ({ _id: set._id, title: set.title, talkIds: set.talkIds })),
-        talkStatusById
-      );
+      setTalkStatuses(Object.fromEntries(entries));
+      setStatusesReady(true);
     }
 
-    void persistSnapshot();
+    void loadStatuses();
 
     return () => {
       cancelled = true;
     };
-  }, [clerkId, sets, talks]);
+  }, [clerkId, talks]);
+
+  const { syncState, syncError } = useOfflineLibrarySync({
+    userId: clerkId,
+    talks: statusesReady ? talks : undefined,
+    sets: statusesReady ? sets : undefined,
+    talkStatuses,
+    refreshOfflineBootstrap,
+  });
 
   function closeFab() { setFabOpen(false); }
 
@@ -172,10 +178,29 @@ export default function OnlineLibraryPage() {
     setCreateMode('none');
   }
 
+  const syncLabel = syncState === 'syncing'
+    ? 'Syncing offline data...'
+    : syncState === 'ready'
+      ? 'Available offline'
+      : syncState === 'error'
+        ? 'Offline sync failed'
+        : 'Preparing offline data...';
+
+  const syncClassName = syncState === 'ready'
+    ? 'text-emerald-400'
+    : syncState === 'error'
+      ? 'text-red-400'
+      : 'text-[var(--muted)]';
+
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)]">
-        <h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Podium</h1>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Podium</h1>
+          <p className={`mt-1 text-xs ${syncClassName}`} title={syncError ?? undefined}>
+            {syncLabel}
+          </p>
+        </div>
         <a href="/settings" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
           Settings
         </a>
@@ -211,7 +236,10 @@ export default function OnlineLibraryPage() {
                     {talk.title}
                   </a>
                   <div className="mt-2">
-                    <OfflineStatusBadge status={talkStatuses[talk._id]} />
+                    <OfflineStatusBadge
+                      status={talkStatuses[talk._id]}
+                      documentAvailable
+                    />
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

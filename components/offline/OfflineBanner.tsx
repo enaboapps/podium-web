@@ -1,6 +1,11 @@
 'use client';
 
-export function OfflineBanner({ lastSyncedAt }: { lastSyncedAt: number | null }) {
+interface OfflineBannerProps {
+  lastSyncedAt: number | null;
+  detail?: string;
+}
+
+export function OfflineBanner({ lastSyncedAt, detail }: OfflineBannerProps) {
   const syncedLabel = lastSyncedAt
     ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastSyncedAt))
     : 'Unknown';
@@ -11,6 +16,11 @@ export function OfflineBanner({ lastSyncedAt }: { lastSyncedAt: number | null })
       <p className="mt-1 text-sm text-[var(--muted)]">
         Showing last synced content from this device.
       </p>
+      {detail && (
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          {detail}
+        </p>
+      )}
       <p className="mt-1 text-xs text-[var(--muted)]">
         Last sync: {syncedLabel}
       </p>

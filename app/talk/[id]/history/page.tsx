@@ -8,7 +8,7 @@ import { Id } from '@/convex/_generated/dataModel';
 import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { clearTalkAudio } from '@/lib/audioStore';
+import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
 import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 type ViewMode = 'preview' | 'diff';
@@ -46,6 +46,15 @@ function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
     setRestoring(versionId);
     try {
       await restoreVersion({ talkId: id as Id<'talks'>, versionId, userId: clerkId });
+      const restoredVersion = versions?.find((version) => version._id === versionId);
+      if (restoredVersion && talk) {
+        await saveTalkData(id, {
+          _id: id,
+          title: talk.title,
+          segments: restoredVersion.segments,
+          updatedAt: Date.now(),
+        });
+      }
       await clearTalkAudio(id);
       if (talk) {
         await saveTalkPreparedState(clerkId, id, {

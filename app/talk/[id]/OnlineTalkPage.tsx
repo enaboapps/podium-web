@@ -59,6 +59,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       title: talk.title,
       segments: talk.segments,
       voiceKey,
+      updatedAt: Date.now(),
     });
 
     if (!userId) return;

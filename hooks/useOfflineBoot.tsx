@@ -9,7 +9,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import { getOfflineBootstrap, type OfflineBootstrapRecord } from '@/lib/offlineStore';
+import {
+  getOfflineBootstrap,
+  rebuildOfflineBootstrapFromCachedTalks,
+  refreshOfflineBootstrap,
+  type OfflineBootstrapRecord,
+} from '@/lib/offlineStore';
 
 const ONLINE_BOOT_TIMEOUT_MS = 2000;
 
@@ -25,7 +30,9 @@ interface OfflineBootContextValue {
   lastUserId: string | null;
   lastSyncedAt: number | null;
   library: OfflineBootstrapRecord | null;
+  syncState: 'ready' | 'partial' | null;
   markOnlineRuntimeReady: () => void;
+  refreshOfflineBootstrap: () => Promise<OfflineBootstrapRecord | null>;
 }
 
 const OfflineBootContext = createContext<OfflineBootContextValue | null>(null);
@@ -47,8 +54,26 @@ export function OfflineBootProvider({ children }: { children: React.ReactNode })
 
   const loadBootstrap = useCallback(async () => {
     const bootstrap = await getOfflineBootstrap();
-    setLibrary(bootstrap ?? null);
-    return bootstrap ?? null;
+    if (bootstrap) {
+      setLibrary(bootstrap);
+      return bootstrap;
+    }
+
+    const rebuilt = await rebuildOfflineBootstrapFromCachedTalks();
+    setLibrary(rebuilt ?? null);
+    return rebuilt ?? null;
+  }, []);
+
+  const refreshBootstrap = useCallback(async () => {
+    const bootstrap = await refreshOfflineBootstrap();
+    if (bootstrap) {
+      setLibrary(bootstrap);
+      return bootstrap;
+    }
+
+    const rebuilt = await rebuildOfflineBootstrapFromCachedTalks();
+    setLibrary(rebuilt ?? null);
+    return rebuilt ?? null;
   }, []);
 
   const resolveMode = useCallback(async (nextOnline: boolean) => {
@@ -106,8 +131,8 @@ export function OfflineBootProvider({ children }: { children: React.ReactNode })
     onlineReadyRef.current = true;
     clearBootTimeout();
     setMode('online');
-    void loadBootstrap();
-  }, [clearBootTimeout, loadBootstrap]);
+    void refreshBootstrap();
+  }, [clearBootTimeout, refreshBootstrap]);
 
   const value = useMemo<OfflineBootContextValue>(() => ({
     mode,
@@ -115,8 +140,10 @@ export function OfflineBootProvider({ children }: { children: React.ReactNode })
     lastUserId: library?.userId ?? null,
     lastSyncedAt: library?.lastSyncedAt ?? null,
     library,
+    syncState: library?.syncState ?? null,
     markOnlineRuntimeReady,
-  }), [isOnline, library, markOnlineRuntimeReady, mode]);
+    refreshOfflineBootstrap: refreshBootstrap,
+  }), [isOnline, library, markOnlineRuntimeReady, mode, refreshBootstrap]);
 
   return (
     <OfflineBootContext.Provider value={value}>

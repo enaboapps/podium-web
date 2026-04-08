@@ -21,12 +21,32 @@ export interface CachedTalk {
   title: string;
   segments: Array<{ id: string; text: string; elements?: unknown[] }>;
   voiceKey?: string;
+  updatedAt: number;
 }
 
 export async function saveTalkData(id: string, talk: CachedTalk): Promise<void> {
-  return set(id, talk, talkStore);
+  const existing = await get<CachedTalk>(id, talkStore);
+  return set(id, {
+    ...existing,
+    ...talk,
+    voiceKey: talk.voiceKey ?? existing?.voiceKey,
+  }, talkStore);
 }
 
 export async function getTalkData(id: string): Promise<CachedTalk | undefined> {
   return get<CachedTalk>(id, talkStore);
+}
+
+export async function saveTalkDocuments(talks: CachedTalk[]): Promise<void> {
+  await Promise.all(talks.map((talk) => saveTalkData(talk._id, talk)));
+}
+
+export async function listTalkData(): Promise<CachedTalk[]> {
+  const talkKeys = await keys<string>(talkStore);
+  const talks = await Promise.all(talkKeys.map((key) => get<CachedTalk>(key, talkStore)));
+  return talks.filter((talk): talk is CachedTalk => !!talk);
+}
+
+export async function deleteTalkData(id: string): Promise<void> {
+  await del(id, talkStore);
 }

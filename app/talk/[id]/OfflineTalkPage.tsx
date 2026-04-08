@@ -130,7 +130,7 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  if (talk === null || !status?.hasDocument) {
+  if (talk === null) {
     return (
       <OfflineUnavailable
         title="Talk unavailable offline"
@@ -156,7 +156,11 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
       {!audioReady && (
         <div className="mx-5 mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <p className="text-sm text-[var(--foreground)]">This talk was not fully prepared for offline playback.</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">The script is available, but cached speech audio is incomplete.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {status?.hasAudio
+              ? 'The script is available, but cached speech audio is incomplete.'
+              : 'The script is available, but cached speech audio has not been prepared for offline use.'}
+          </p>
         </div>
       )}
 

@@ -8,7 +8,7 @@ import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
-import { clearTalkAudio } from '@/lib/audioStore';
+import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
 import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 type SegmentMode = 'paragraphs' | 'sentences';
@@ -72,6 +72,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         fullText: joinFullText(paragraphs),
         segments,
         segmentMode: mode,
+      });
+      await saveTalkData(id, {
+        _id: id,
+        title: talk?.title ?? 'Untitled',
+        segments,
+        updatedAt: Date.now(),
       });
       await clearTalkAudio(id);
       if (clerkId) {
