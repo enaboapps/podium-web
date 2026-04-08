@@ -4,23 +4,18 @@ import { use, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 
 export default function SetPage({ params }: { params: Promise<{ id: string }> }) {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="Sets unavailable offline"
-        message="Set details are not available in Podium's offline emergency mode yet."
-      />
-    );
-  }
-
-  return <OnlineSetPage params={params} />;
+  return (
+    <OfflineGate
+      unavailableTitle="Sets unavailable offline"
+      unavailableMessage="Set details are not available in Podium's offline emergency mode yet."
+    >
+      <OnlineSetPage params={params} />
+    </OfflineGate>
+  );
 }
 
 function OnlineSetPage({ params }: { params: Promise<{ id: string }> }) {

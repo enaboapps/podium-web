@@ -4,28 +4,22 @@ import { use, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
-import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
-import { useOfflineBoot } from '@/hooks/useOfflineBoot';
+import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
-import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
-import { saveTalkPreparedState } from '@/lib/offlineStore';
+import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
 
 type SegmentMode = 'paragraphs' | 'sentences';
 
 export default function EditPage({ params }: { params: Promise<{ id: string }> }) {
-  const { mode } = useOfflineBoot();
-
-  if (mode === 'offline-emergency' || mode === 'offline-unavailable') {
-    return (
-      <OfflineUnavailable
-        title="Editing unavailable offline"
-        message="Talk editing is not available in Podium's offline emergency mode."
-      />
-    );
-  }
-
-  return <OnlineEditPage params={params} />;
+  return (
+    <OfflineGate
+      unavailableTitle="Editing unavailable offline"
+      unavailableMessage="Talk editing is not available in Podium's offline emergency mode."
+    >
+      <OnlineEditPage params={params} />
+    </OfflineGate>
+  );
 }
 
 function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
@@ -73,23 +67,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         segments,
         segmentMode: mode,
       });
-      await saveTalkData(id, {
-        _id: id,
+      await invalidateTalkOfflineState({
+        userId: clerkId,
+        talkId: id,
         title: talk?.title ?? 'Untitled',
         segments,
-        updatedAt: Date.now(),
       });
-      await clearTalkAudio(id);
-      if (clerkId) {
-        await saveTalkPreparedState(clerkId, id, {
-          talkId: id,
-          hasDocument: true,
-          hasAudio: false,
-          segmentCount: segments.length,
-          cachedAudioSegments: 0,
-          lastPreparedAt: null,
-        });
-      }
       setDirty(false);
       setSaved(true);
     } catch {
