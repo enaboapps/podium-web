@@ -16,6 +16,8 @@ import OfflineTalkPage from './OfflineTalkPage';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
+const EARLY_START_THRESHOLD = 0.25; // unlock talk UI once this fraction of segments are cached
+
 export default function OnlineTalkPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { clerkId } = useOnlineCurrentUser();
@@ -33,6 +35,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const [cacheFailed, setCacheFailed] = useState(false);
   const [cacheChecked, setCacheChecked] = useState(false);
   const [forceOfflineFallback, setForceOfflineFallback] = useState(false);
+  const [waitingForSegment, setWaitingForSegment] = useState(false);
 
   const provider = settings?.provider ?? 'elevenlabs';
   const isAzure = provider === 'azure';
@@ -191,6 +194,21 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     };
   }, [clerkId, id, isAzure, segments, ttsConfig, voiceKey]);
 
+  const earlyStartReady =
+    cacheChecked &&
+    segments.length > 0 &&
+    cacheLoaded >= Math.max(1, Math.ceil(segments.length * EARLY_START_THRESHOLD));
+
+  // Auto-play when a segment the user is waiting on becomes available
+  useEffect(() => {
+    if (!waitingForSegment) return;
+    if (audioUrls.current.has(index)) {
+      setWaitingForSegment(false);
+      void speakAt(index);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheLoaded, index, waitingForSegment]);
+
   const current = segments[index];
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
@@ -217,9 +235,11 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   async function speakAt(targetIndex: number) {
     const url = audioUrls.current.get(targetIndex);
     if (!url) {
+      setWaitingForSegment(true);
       setSpeakState('idle');
       return;
     }
+    setWaitingForSegment(false);
 
     setSpeakState('loading');
     const audio = new Audio(url);
@@ -264,7 +284,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  if (ttsReady && cacheChecked && !cacheReady) {
+  if (ttsReady && cacheChecked && !earlyStartReady) {
     const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
     const percent = Math.round(progress * 100);
 
@@ -332,12 +352,13 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const noTTSMessage = isAzure ? 'Add Azure credentials in Settings' : 'Add ElevenLabs key in Settings';
 
   const speakButtonLabel =
+    waitingForSegment ? 'Preparing...' :
     speakState === 'loading' ? 'Loading...' :
     speakState === 'speaking' ? 'Speaking...' :
     speakState === 'spoken' ? (isLast ? 'Done!' : 'Next') :
     ttsReady ? 'Speak' : noTTSMessage;
 
-  const speakButtonDisabled = !ttsReady || isLocked || (speakState === 'spoken' && isLast);
+  const speakButtonDisabled = !ttsReady || isLocked || waitingForSegment || (speakState === 'spoken' && isLast);
 
   function handleSpeakButton() {
     if (speakState === 'spoken' && !isLast) {
@@ -373,6 +394,32 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
           style={{ width: `${((index + 1) / segments.length) * 100}%` }}
         />
       </div>
+
+      {/* Background download banner */}
+      <AnimatePresence>
+        {earlyStartReady && !cacheReady && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-5 py-2 bg-[var(--surface)] border-b border-[var(--border)]">
+              <Download className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" strokeWidth={1.5} />
+              <div className="flex-1 h-1 bg-[var(--border)] rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-[var(--primary)]/50 rounded-full"
+                  animate={{ width: `${(cacheLoaded / segments.length) * 100}%` }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                />
+              </div>
+              <span className="text-xs text-[var(--muted)] tabular-nums shrink-0">
+                {cacheLoaded}/{segments.length}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Segment text */}
       <div className="flex-1 min-h-0 overflow-y-auto">
