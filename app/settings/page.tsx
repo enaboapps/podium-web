@@ -9,7 +9,7 @@ import { VoicePicker } from '@/components/settings/VoicePicker';
 import { OfflineGate } from '@/components/offline/OfflineGate';
 import { api } from '@/convex/_generated/api';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { DEFAULT_VOICE_ID, fetchVoices, TTSConfig, TTSVoice } from '@/lib/tts';
+import { DEFAULT_AZURE_VOICE, DEFAULT_VOICE_ID, fetchVoices, TTSConfig, TTSVoice } from '@/lib/tts';
 
 const MASKED = '****************';
 
@@ -81,14 +81,14 @@ function OnlineSettingsPage() {
             provider: 'azure',
             subscriptionKey: settings.azureSubscriptionKey,
             region: settings.azureRegion,
-            voiceId: settings.voiceId,
+            voiceId: settings.azureVoiceId,
           }
         : null
       : settings.elevenLabsApiKey
         ? {
             provider: 'elevenlabs',
             apiKey: settings.elevenLabsApiKey,
-            voiceId: settings.voiceId,
+            voiceId: settings.elevenLabsVoiceId,
           }
         : null
     : null;
@@ -120,7 +120,7 @@ function OnlineSettingsPage() {
 
   async function handleSelectVoice(voiceId: string) {
     if (!clerkId) return;
-    await saveVoiceId({ clerkId, voiceId });
+    await saveVoiceId({ clerkId, voiceId, provider });
   }
 
   async function handleProviderChange(nextProvider: 'elevenlabs' | 'azure') {
@@ -187,7 +187,9 @@ function OnlineSettingsPage() {
     ? !!(settings?.azureSubscriptionKey && settings?.azureRegion)
     : !!settings?.elevenLabsApiKey;
 
-  const selectedVoiceId = settings?.voiceId ?? DEFAULT_VOICE_ID;
+  const selectedVoiceId = isAzure
+    ? (settings?.azureVoiceId ?? DEFAULT_AZURE_VOICE)
+    : (settings?.elevenLabsVoiceId ?? DEFAULT_VOICE_ID);
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId);
 
   return (

@@ -39,7 +39,7 @@ function OnlineSegmentsPage({ params }: { params: Promise<{ id: string }> }) {
           provider: 'azure',
           subscriptionKey: settings.azureSubscriptionKey,
           region: settings.azureRegion,
-          voiceId: settings.voiceId,
+          voiceId: settings.azureVoiceId,
         }
       : null;
 

@@ -83,14 +83,19 @@ export const clearAzureCredentials = mutation({
 });
 
 export const saveVoiceId = mutation({
-  args: { clerkId: v.string(), voiceId: v.string() },
-  handler: async (ctx, { clerkId, voiceId }) => {
+  args: {
+    clerkId: v.string(),
+    voiceId: v.string(),
+    provider: v.union(v.literal('elevenlabs'), v.literal('azure')),
+  },
+  handler: async (ctx, { clerkId, voiceId, provider }) => {
     const user = await ctx.db
       .query('users')
       .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
       .unique();
     if (!user) throw new Error('User not found');
-    await ctx.db.patch(user._id, { voiceId });
+    const field = provider === 'azure' ? 'azureVoiceId' : 'elevenLabsVoiceId';
+    await ctx.db.patch(user._id, { [field]: voiceId });
   },
 });
 
