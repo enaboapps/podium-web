@@ -147,29 +147,28 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       let completed = hits.length;
       let hadFailure = false;
 
-      await Promise.all(
-        misses.map(async ({ segmentIndex, cacheKey, segment }) => {
-          try {
-            const ttsText = isAzure && segment.elements
-              ? buildSSML(segment.elements as SegmentElement[])
-              : segment.text;
-            const blob = await fetchTTSBlob(ttsText, activeTtsConfig);
-            if (signal.aborted) return;
-            await setCachedAudio(cacheKey, blob);
-            audioUrls.current.set(segmentIndex, URL.createObjectURL(blob));
-          } catch (err) {
-            if ((err as Error).name === 'AbortError') return;
-            hadFailure = true;
-            setCacheFailed(true);
-          } finally {
-            if (!signal.aborted) {
-              completed++;
-              setCacheLoaded(completed);
-              if (completed === segments.length) setCacheReady(true);
-            }
+      for (const { segmentIndex, cacheKey, segment } of misses) {
+        if (signal.aborted) break;
+        try {
+          const ttsText = isAzure && segment.elements
+            ? buildSSML(segment.elements as SegmentElement[])
+            : segment.text;
+          const blob = await fetchTTSBlob(ttsText, activeTtsConfig);
+          if (signal.aborted) break;
+          await setCachedAudio(cacheKey, blob);
+          audioUrls.current.set(segmentIndex, URL.createObjectURL(blob));
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') break;
+          hadFailure = true;
+          setCacheFailed(true);
+        } finally {
+          if (!signal.aborted) {
+            completed++;
+            setCacheLoaded(completed);
+            if (completed === segments.length) setCacheReady(true);
           }
-        })
-      );
+        }
+      }
 
       await saveTalkPreparedState(userId, id, {
         talkId: id,
