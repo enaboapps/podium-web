@@ -8,7 +8,7 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { getCachedAudio, saveTalkData, setCachedAudio } from '@/lib/audioStore';
+import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { buildSSML, SegmentElement } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
@@ -113,6 +113,13 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     const currentAudioUrls = audioUrls.current;
 
     async function prepare() {
+      // Clear stale audio if the voice has changed since the last download
+      const storedTalk = await getTalkData(id);
+      if (storedTalk?.voiceKey && storedTalk.voiceKey !== voiceKey) {
+        await clearTalkAudio(id);
+      }
+      if (signal.aborted) return;
+
       const idbResults = await Promise.all(
         segments.map(async (segment, segmentIndex) => {
           const cacheKey = segment.elements
@@ -193,6 +200,21 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       currentAudioUrls.clear();
     };
   }, [clerkId, id, isAzure, segments, ttsConfig, voiceKey]);
+
+  // Stable identity string that changes when segment content or voice changes
+  const audioIdentityKey = voiceKey + segments.map(s =>
+    s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
+  ).join('|');
+
+  // Reset cache state whenever the audio identity changes (voice or SSML update)
+  useEffect(() => {
+    setCacheReady(false);
+    setCacheChecked(false);
+    setCacheLoaded(0);
+    setCacheFailed(false);
+    setWaitingForSegment(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioIdentityKey]);
 
   const earlyStartReady =
     cacheChecked &&
