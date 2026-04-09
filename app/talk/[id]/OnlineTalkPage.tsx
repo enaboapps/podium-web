@@ -2,8 +2,8 @@
 
 import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
-import { motion } from 'framer-motion';
-import { Download, WifiOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Download, WifiOff, Volume2, ChevronRight, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
@@ -195,15 +195,6 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const isLast = index === segments.length - 1;
   const isLocked = speakState === 'loading' || speakState === 'speaking';
 
-  function handleTap() {
-    if (isLocked) return;
-    if (speakState === 'spoken') {
-      if (!isLast) doAdvanceAndSpeak();
-      return;
-    }
-    doSpeak();
-  }
-
   function doSpeak() {
     void speakAt(index);
   }
@@ -340,6 +331,22 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
 
   const noTTSMessage = isAzure ? 'Add Azure credentials in Settings' : 'Add ElevenLabs key in Settings';
 
+  const speakButtonLabel =
+    speakState === 'loading' ? 'Loading...' :
+    speakState === 'speaking' ? 'Speaking...' :
+    speakState === 'spoken' ? (isLast ? 'Done!' : 'Next') :
+    ttsReady ? 'Speak' : noTTSMessage;
+
+  const speakButtonDisabled = !ttsReady || isLocked || (speakState === 'spoken' && isLast);
+
+  function handleSpeakButton() {
+    if (speakState === 'spoken' && !isLast) {
+      doAdvanceAndSpeak();
+    } else if (speakState === 'idle') {
+      doSpeak();
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
@@ -367,49 +374,83 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         />
       </div>
 
-      <button
-        onClick={handleTap}
-        disabled={!ttsReady || isLocked}
-        className="flex-1 flex flex-col items-center justify-center px-8 py-12 w-full disabled:cursor-default"
-      >
-        <div className={`px-6 py-8 rounded-3xl transition-all duration-500 ${
-          speakState === 'speaking' ? 'ring-2 ring-[var(--primary)]/30 bg-[var(--surface)]' : ''
-        }`}>
+      {/* Segment text */}
+      <div className="flex-1 flex items-center justify-center px-8 py-12">
+        <motion.div
+          key={index}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className={`px-6 py-8 rounded-3xl transition-all duration-500 ${
+            speakState === 'speaking' ? 'ring-2 ring-[var(--primary)]/30 bg-[var(--surface)]' : ''
+          }`}
+        >
           <p className="text-3xl leading-snug font-semibold text-center text-[var(--foreground)]" style={{ fontFamily: 'var(--font-display)' }}>
             {current.text}
           </p>
-        </div>
-        <p className={`mt-8 text-sm transition-colors ${
-          speakState === 'loading' ? 'text-[var(--muted)] animate-pulse' :
-          speakState === 'speaking' ? 'text-[var(--primary)]' :
-          'text-[var(--muted)]'
-        }`}>
-          {speakState === 'loading' && 'Loading...'}
-          {speakState === 'speaking' && 'Speaking...'}
-          {speakState === 'spoken' && (isLast ? 'Done' : 'Tap to advance')}
-          {speakState === 'idle' && (ttsReady ? 'Tap to speak' : noTTSMessage)}
-        </p>
-      </button>
+        </motion.div>
+      </div>
 
-      <div className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
-        isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      }`}>
+      {/* Nav row — back | speak/next | forward */}
+      <div className="flex items-center gap-3 px-6 pb-10">
         <button
           onClick={back}
-          disabled={index === 0}
-          className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
-        >{'<-'}</button>
-        {speakState === 'spoken' && isLast ? (
-          <a href="/library" className="text-sm text-[var(--primary)] font-medium">Done</a>
-        ) : (
-          <div className="w-14" />
-        )}
+          disabled={isLocked || index === 0}
+          className="w-14 h-14 shrink-0 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 active:scale-95 transition-transform"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <motion.button
+          onClick={handleSpeakButton}
+          disabled={speakButtonDisabled}
+          whileTap={speakButtonDisabled ? {} : { scale: 0.97 }}
+          className={`flex-1 h-14 rounded-full flex items-center justify-center gap-2 text-base font-semibold transition-colors duration-200 ${
+            speakState === 'speaking'
+              ? 'bg-[var(--primary)]/20 text-[var(--primary)] cursor-default'
+              : speakButtonDisabled
+              ? 'bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] cursor-default'
+              : 'bg-[var(--primary)] text-white'
+          }`}
+        >
+          <AnimatePresence mode="wait">
+            {speakState === 'speaking' ? (
+              <motion.span key="speaking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                <motion.div animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 0.8, repeat: Infinity }}>
+                  <Volume2 className="w-4 h-4" />
+                </motion.div>
+                Speaking...
+              </motion.span>
+            ) : speakState === 'spoken' && !isLast ? (
+              <motion.span key="next" initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
+                Next <ChevronRight className="w-4 h-4" />
+              </motion.span>
+            ) : speakState === 'idle' && ttsReady ? (
+              <motion.span key="speak" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4" /> Speak
+              </motion.span>
+            ) : (
+              <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {speakButtonLabel}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
+
         <button
-          onClick={() => speakState === 'spoken' ? doAdvance() : undefined}
-          disabled={isLast || speakState !== 'spoken'}
-          className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
-        >{'->'}</button>
+          onClick={() => { if (speakState === 'spoken' && !isLast) doAdvance(); }}
+          disabled={isLocked || isLast || speakState !== 'spoken'}
+          className="w-14 h-14 shrink-0 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 active:scale-95 transition-transform"
+        >
+          <ArrowRight className="w-5 h-5" />
+        </button>
       </div>
+
+      {speakState === 'spoken' && isLast && (
+        <div className="flex justify-center pb-6 -mt-4">
+          <a href="/library" className="text-sm text-[var(--primary)] font-medium">Back to library</a>
+        </div>
+      )}
     </div>
   );
 }
