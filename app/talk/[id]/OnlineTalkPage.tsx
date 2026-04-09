@@ -42,17 +42,19 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     settings
       ? isAzure
         ? settings.azureSubscriptionKey && settings.azureRegion
-          ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.voiceId }
+          ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.azureVoiceId }
           : null
         : settings.elevenLabsApiKey
-          ? { provider: 'elevenlabs', apiKey: settings.elevenLabsApiKey, voiceId: settings.voiceId }
+          ? { provider: 'elevenlabs', apiKey: settings.elevenLabsApiKey, voiceId: settings.elevenLabsVoiceId }
           : null
       : null
   ), [isAzure, settings]);
 
   const effectiveTalk = talk ?? undefined;
   const segments = useMemo(() => effectiveTalk?.segments ?? [], [effectiveTalk]);
-  const voiceKey = `${provider}:${settings?.voiceId ?? 'default'}`;
+  const voiceKey = isAzure
+    ? `azure:${settings?.azureVoiceId ?? 'default'}`
+    : `elevenlabs:${settings?.elevenLabsVoiceId ?? 'default'}`;
 
   useEffect(() => {
     if (talk !== undefined) {
