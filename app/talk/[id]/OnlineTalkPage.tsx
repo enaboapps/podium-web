@@ -348,7 +348,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   }
 
   return (
-    <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex flex-col h-dvh bg-[var(--background)] text-[var(--foreground)]">
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
         <a
           href="/library"
@@ -375,7 +375,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Segment text */}
-      <div className="flex-1 flex items-center justify-center px-8 py-12">
+      <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center px-8 py-8">
         <motion.div
           key={index}
           initial={{ opacity: 0, y: 8 }}
