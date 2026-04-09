@@ -1,4 +1,5 @@
-const CACHE = 'podium-v4';
+const version = new URLSearchParams(self.location.search).get('v') ?? 'unknown';
+const CACHE = `podium-${version}`;
 const OFFLINE_URL = '/offline.html';
 const CLERK_HOST = 'clerk.podiumspeak.xyz';
 const PRECACHE_URLS = [
