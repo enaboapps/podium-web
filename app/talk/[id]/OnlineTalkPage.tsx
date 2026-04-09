@@ -397,7 +397,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
           onClick={handleSpeakButton}
           disabled={speakButtonDisabled}
           whileTap={speakButtonDisabled ? {} : { scale: 0.97 }}
-          className={`w-full h-16 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold transition-colors duration-200 ${
+          className={`w-full h-24 rounded-2xl flex items-center justify-center gap-3 text-xl font-semibold transition-colors duration-200 ${
             speakState === 'speaking'
               ? 'bg-[var(--primary)]/20 text-[var(--primary)] cursor-default'
               : speakState === 'spoken' && isLast
