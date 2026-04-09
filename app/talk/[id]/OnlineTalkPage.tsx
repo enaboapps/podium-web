@@ -2,6 +2,8 @@
 
 import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
+import { motion } from 'framer-motion';
+import { Download, WifiOff } from 'lucide-react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
@@ -273,6 +275,8 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
 
   if (ttsReady && cacheChecked && !cacheReady) {
     const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
+    const percent = Math.round(progress * 100);
+
     return (
       <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
         <header className="flex items-center justify-between px-5 pt-6 pb-4">
@@ -280,23 +284,54 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
           <span className="text-xs text-[var(--muted)] truncate mx-4">{effectiveTalk.title}</span>
           <div className="w-12" />
         </header>
-        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
-          <p className="text-sm text-[var(--muted)]">Preparing audio...</p>
-          <div className="w-full max-w-xs">
-            <div className="h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
-                style={{ width: `${progress * 100}%` }}
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-8">
+          {/* Animated icon */}
+          <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-[var(--surface)] border border-[var(--border)]">
+            <motion.div
+              animate={{ y: [0, 4, 0] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <Download className="w-8 h-8 text-[var(--primary)]" strokeWidth={1.5} />
+            </motion.div>
+          </div>
+
+          {/* Headline + explanation */}
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">Downloading your talk</h2>
+            <div className="flex items-center gap-1.5 text-sm text-[var(--muted)]">
+              <WifiOff className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+              <span>So it works without internet during your speech</span>
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div className="w-full max-w-xs flex flex-col gap-3">
+            <div className="flex items-end justify-between px-0.5">
+              <span className="text-3xl font-bold text-[var(--foreground)] tabular-nums">{percent}%</span>
+              <span className="text-sm text-[var(--muted)] pb-1">{cacheLoaded} of {segments.length} sections</span>
+            </div>
+            <div className="h-3 bg-[var(--border)] rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-[var(--primary)] rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress * 100}%` }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
               />
             </div>
-            <p className="text-xs text-[var(--muted)] mt-2 text-center">
-              {cacheLoaded} / {segments.length}
-            </p>
+            <p className="text-xs text-[var(--muted)] text-center">Please keep this screen open</p>
           </div>
+
           {cacheFailed && (
-            <button onClick={() => setCacheReady(true)} className="text-sm text-[var(--primary)]">
-              Continue anyway
-            </button>
+            <div className="flex flex-col items-center gap-2 text-center">
+              <p className="text-sm text-[var(--muted)]">Some sections couldn&apos;t be downloaded.</p>
+              <button
+                onClick={() => setCacheReady(true)}
+                className="text-sm font-medium text-[var(--primary)] underline underline-offset-2"
+              >
+                Continue anyway
+              </button>
+            </div>
           )}
         </div>
       </div>
