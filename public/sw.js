@@ -1,4 +1,5 @@
-const CACHE = 'podium-v3';
+const version = new URLSearchParams(self.location.search).get('v') ?? 'unknown';
+const CACHE = `podium-${version}`;
 const OFFLINE_URL = '/offline.html';
 const CLERK_HOST = 'clerk.podiumspeak.xyz';
 const PRECACHE_URLS = [
@@ -19,7 +20,11 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
 
 function cacheFirst(request) {
