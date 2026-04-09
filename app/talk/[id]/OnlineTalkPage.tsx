@@ -375,7 +375,8 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Segment text */}
-      <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center px-8 py-8">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center px-8 py-8">
         <motion.div
           key={index}
           initial={{ opacity: 0, y: 8 }}
@@ -389,10 +390,11 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
             {current.text}
           </p>
         </motion.div>
+        </div>
       </div>
 
       {/* Nav row — back | speak/next | forward */}
-      <div className="flex items-center gap-3 px-6 pb-10">
+      <div className="flex items-center gap-3 px-6 pt-4 pb-10">
         <button
           onClick={back}
           disabled={isLocked || index === 0}
