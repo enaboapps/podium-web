@@ -23,6 +23,8 @@ export default defineSchema({
     azureRegion: v.optional(v.string()),
     elevenLabsVoiceId: v.optional(v.string()),
     azureVoiceId: v.optional(v.string()),
+    /** @deprecated — migrated to elevenLabsVoiceId / azureVoiceId. Remove after migration. */
+    voiceId: v.optional(v.string()),
   }).index('by_clerk_id', ['clerkId']),
 
   talks: defineTable({
