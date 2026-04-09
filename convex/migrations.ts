@@ -19,8 +19,9 @@ export const migrateVoiceIds = internalMutation({
       const provider = user.provider ?? 'elevenlabs';
       const field = provider === 'azure' ? 'azureVoiceId' : 'elevenLabsVoiceId';
 
-      await ctx.db.patch(user._id, {
-        [field]: user[field as keyof typeof user] ?? legacy,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (ctx.db.patch as any)(user._id, {
+        [field]: (user as any)[field] ?? legacy,
         voiceId: undefined,
       });
 
