@@ -1,7 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { VoiceUtils, type UnifiedVoice } from 'js-tts-wrapper/browser';
 import { TTSVoice } from '@/lib/tts';
+
+// TTSVoice is structurally compatible with UnifiedVoice for filtering purposes
+type AsUnified = UnifiedVoice[];
 
 type GenderFilter = 'All' | 'Male' | 'Female' | 'Unknown';
 
@@ -30,27 +34,28 @@ export function VoicePicker({
   const [genderFilter, setGenderFilter] = useState<GenderFilter>('All');
   const [langFilter, setLangFilter] = useState<string>('All');
 
+  const u = voices as unknown as AsUnified;
+
   const languageOptions = useMemo(() => {
+    const bcp47Codes = VoiceUtils.getAvailableLanguages(u);
     const seen = new Map<string, string>();
-    for (const voice of voices) {
-      for (const lc of voice.languageCodes) {
-        if (!seen.has(lc.bcp47)) seen.set(lc.bcp47, lc.display);
-      }
+    for (const code of bcp47Codes) {
+      const label = voices
+        .flatMap((v) => v.languageCodes)
+        .find((lc) => lc.bcp47 === code)?.display;
+      seen.set(code, label || code);
     }
     return Array.from(seen.entries())
       .map(([bcp47, display]) => ({ bcp47, display }))
       .sort((a, b) => a.display.localeCompare(b.display));
-  }, [voices]);
+  }, [u, voices]);
 
-  const filteredVoices = useMemo(
-    () =>
-      voices.filter(
-        (v) =>
-          (genderFilter === 'All' || v.gender === genderFilter) &&
-          (langFilter === 'All' || v.languageCodes.some((lc) => lc.bcp47 === langFilter)),
-      ),
-    [voices, genderFilter, langFilter],
-  );
+  const filteredVoices = useMemo(() => {
+    let result = u;
+    if (genderFilter !== 'All') result = VoiceUtils.filterByGender(result, genderFilter);
+    if (langFilter !== 'All') result = VoiceUtils.filterByLanguage(result, langFilter);
+    return result as unknown as TTSVoice[];
+  }, [u, genderFilter, langFilter]);
 
   return (
     <section>
