@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { VoiceUtils, type UnifiedVoice } from 'js-tts-wrapper/browser';
 import { TTSVoice } from '@/lib/tts';
 
@@ -56,6 +56,14 @@ export function VoicePicker({
     if (langFilter !== 'All') result = VoiceUtils.filterByLanguage(result, langFilter);
     return result as unknown as TTSVoice[];
   }, [u, genderFilter, langFilter]);
+
+  // When filters change and the selected voice is no longer in the list, auto-select the first match
+  useEffect(() => {
+    if (filteredVoices.length === 0) return;
+    if (!filteredVoices.some((v) => v.id === selectedVoiceId)) {
+      onSelectVoice(filteredVoices[0].id);
+    }
+  }, [filteredVoices, selectedVoiceId, onSelectVoice]);
 
   return (
     <section>
