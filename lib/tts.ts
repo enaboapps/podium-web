@@ -12,6 +12,9 @@ export interface TTSVoice {
   id: string;
   name: string;
   previewUrl?: string;
+  gender?: 'Male' | 'Female' | 'Unknown';
+  languageCodes: { bcp47: string; iso639_3: string; display: string }[];
+  provider: string;
 }
 
 function createClient(config: TTSConfig) {
@@ -35,6 +38,12 @@ export async function fetchVoices(config: TTSConfig): Promise<TTSVoice[]> {
   const client = createClient(config);
   const voices = await client.getVoices();
   return voices
-    .map((v) => ({ id: v.id, name: v.name }))
+    .map((v) => ({
+      id: v.id,
+      name: v.name,
+      gender: v.gender,
+      languageCodes: v.languageCodes ?? [],
+      provider: v.provider,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
