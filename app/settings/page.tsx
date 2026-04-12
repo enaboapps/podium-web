@@ -9,7 +9,7 @@ import { VoicePicker } from '@/components/settings/VoicePicker';
 import { OfflineGate } from '@/components/offline/OfflineGate';
 import { api } from '@/convex/_generated/api';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { DEFAULT_AZURE_VOICE, DEFAULT_VOICE_ID, fetchVoices, TTSConfig, TTSVoice } from '@/lib/tts';
+import { DEFAULT_AZURE_VOICE, DEFAULT_VOICE_ID, fetchTTSBlob, fetchVoices, TTSConfig, TTSVoice } from '@/lib/tts';
 
 const MASKED = '****************';
 
@@ -115,6 +115,21 @@ function OnlineSettingsPage() {
     const audio = new Audio(voice.previewUrl);
     setPreviewAudio(audio);
     audio.onended = () => setPreviewAudio(null);
+    void audio.play();
+  }
+
+  async function handleTest() {
+    if (!ttsConfig) return;
+    const config = { ...ttsConfig, voiceId: selectedVoiceId };
+    const blob = await fetchTTSBlob('Hello, this is a test of the selected voice.', config);
+    previewAudio?.pause();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    setPreviewAudio(audio);
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      setPreviewAudio(null);
+    };
     void audio.play();
   }
 
@@ -251,6 +266,7 @@ function OnlineSettingsPage() {
             voicesLoading={voicesLoading}
             onPreview={handlePreview}
             onSelectVoice={handleSelectVoice}
+            onTest={handleTest}
           />
         ) : null}
       </main>

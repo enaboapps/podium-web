@@ -20,6 +20,7 @@ interface VoicePickerProps {
   voicesLoading: boolean;
   onPreview: (voice: TTSVoice) => void;
   onSelectVoice: (voiceId: string) => void;
+  onTest?: () => Promise<void>;
 }
 
 export function VoicePicker({
@@ -30,9 +31,11 @@ export function VoicePicker({
   voicesLoading,
   onPreview,
   onSelectVoice,
+  onTest,
 }: VoicePickerProps) {
   const [genderFilter, setGenderFilter] = useState<GenderFilter>('All');
   const [langFilter, setLangFilter] = useState<string>('All');
+  const [testing, setTesting] = useState(false);
 
   const u = voices as unknown as AsUnified;
 
@@ -125,6 +128,23 @@ export function VoicePicker({
                   className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                 >
                   Preview
+                </button>
+              ) : null}
+              {onTest ? (
+                <button
+                  type="button"
+                  disabled={testing}
+                  onClick={async () => {
+                    setTesting(true);
+                    try {
+                      await onTest();
+                    } finally {
+                      setTesting(false);
+                    }
+                  }}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  {testing ? 'Testing…' : 'Test'}
                 </button>
               ) : null}
             </div>
