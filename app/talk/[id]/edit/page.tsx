@@ -129,7 +129,6 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         <a href={`/talk/${id}`} className="text-sm text-[var(--muted)]">← Back</a>
         <span className="text-sm font-semibold truncate mx-4 flex-1 text-center">{talk?.title}</span>
         <div className="flex items-center gap-3">
-          <a href={`/talk/${id}/segments`} className="text-xs text-[var(--muted)]">Segments</a>
           <a href={`/talk/${id}/history`} className="text-xs text-[var(--muted)]">History</a>
           <button
             onClick={handleSave}
