@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
@@ -8,6 +8,9 @@ import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
+import { buildAnnotations, tokenise, SegmentElement } from '@/lib/ssml';
+import { TTSConfig } from '@/lib/tts';
+import { SegmentBrickEditor } from '@/components/segments/SegmentBrickEditor';
 
 type SegmentMode = 'paragraphs' | 'sentences';
 
@@ -28,6 +31,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
 
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const saveEditedText = useMutation(api.talks.saveEditedText);
+  const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
+  const saveSegmentElementsMutation = useMutation(api.talks.saveSegmentElements);
 
   const [fullText, setFullText] = useState('');
   const [mode, setMode] = useState<SegmentMode>('paragraphs');
@@ -35,6 +40,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [brickSegmentId, setBrickSegmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!talk) return;
@@ -53,6 +59,31 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const previewSegments = useMemo(() => {
     return mode === 'sentences' ? splitIntoSentences(paragraphs) : paragraphs;
   }, [paragraphs, mode]);
+
+  const isAzure = settings?.provider === 'azure';
+
+  const ttsConfig: TTSConfig | null =
+    settings && isAzure && settings.azureSubscriptionKey && settings.azureRegion
+      ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey,
+          region: settings.azureRegion, voiceId: settings.azureVoiceId }
+      : null;
+
+  const brickSegment = talk?.segments.find((s) => s.id === brickSegmentId) ?? null;
+  const brickSegmentIndex = brickSegment ? talk!.segments.indexOf(brickSegment) : -1;
+
+  const handleBrickSave = useCallback(
+    async (segmentId: string, elements: SegmentElement[]) => {
+      if (!clerkId || !talk) return;
+      await saveSegmentElementsMutation({ id: id as Id<'talks'>, userId: clerkId, segmentId, elements });
+      await invalidateTalkOfflineState({
+        userId: clerkId,
+        talkId: id,
+        title: talk.title ?? 'Untitled',
+        segments: talk.segments.map((s) => s.id === segmentId ? { ...s, elements } : s),
+      });
+    },
+    [clerkId, id, saveSegmentElementsMutation, talk]
+  );
 
   async function handleSave() {
     if (!clerkId || !dirty) return;
@@ -91,6 +122,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   }
 
   return (
+    <>
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
@@ -143,15 +175,26 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           <span className="text-xs text-[var(--muted)] font-medium uppercase tracking-wide">Preview</span>
         </div>
         <div className="overflow-x-auto flex gap-2 px-5 pb-4">
-          {previewSegments.slice(0, 20).map((text, i) => (
-            <div
-              key={i}
-              className="shrink-0 w-52 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)]"
-            >
-              <p className="text-xs text-[var(--muted)] mb-1">{i + 1}</p>
-              <p className="text-xs text-[var(--foreground)] leading-relaxed line-clamp-4">{text}</p>
-            </div>
-          ))}
+          {previewSegments.slice(0, 20).map((text, i) => {
+            const storedSegment = talk?.segments[i];
+            const hasElements = (storedSegment?.elements?.length ?? 0) > 0;
+            const isClickable = !dirty && !!talk;
+            return (
+              <div
+                key={i}
+                onClick={() => { if (isClickable) setBrickSegmentId(storedSegment?.id ?? null); }}
+                className={`relative shrink-0 w-52 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] ${
+                  isClickable ? 'cursor-pointer active:opacity-70' : 'cursor-default'
+                }`}
+              >
+                {hasElements && (
+                  <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
+                )}
+                <p className="text-xs text-[var(--muted)] mb-1">{i + 1}</p>
+                <p className="text-xs text-[var(--foreground)] leading-relaxed line-clamp-4">{text}</p>
+              </div>
+            );
+          })}
           {previewSegments.length > 20 && (
             <div className="shrink-0 w-24 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] flex items-center justify-center">
               <p className="text-xs text-[var(--muted)]">+{previewSegments.length - 20} more</p>
@@ -160,5 +203,27 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </div>
     </div>
+
+    {brickSegment && (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background)]">
+        <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
+          <button onClick={() => setBrickSegmentId(null)} className="text-sm text-[var(--muted)]">← Back</button>
+          <span className="text-sm font-semibold">Segment {brickSegmentIndex + 1}</span>
+          <div className="w-16" />
+        </header>
+        <SegmentBrickEditor
+          key={brickSegment.id}
+          initialAnnotations={
+            (brickSegment.elements as SegmentElement[] | undefined)?.length
+              ? buildAnnotations(brickSegment.elements as SegmentElement[])
+              : tokenise(brickSegment.text)
+          }
+          segmentId={brickSegment.id}
+          ttsConfig={ttsConfig}
+          onSave={handleBrickSave}
+        />
+      </div>
+    )}
+    </>
   );
 }
