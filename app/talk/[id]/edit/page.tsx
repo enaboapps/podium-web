@@ -191,6 +191,9 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
       <div className="border-t border-[var(--border)] shrink-0">
         <div className="px-5 py-2 flex items-center justify-between">
           <span className="text-xs text-[var(--muted)] font-medium uppercase tracking-wide">Preview</span>
+          <span className="text-xs text-[var(--muted)]">
+            {dirty ? 'Save to edit segments' : 'Tap a segment to add emphasis, pauses and more'}
+          </span>
         </div>
         <div className="overflow-x-auto flex gap-2 px-5 pb-4">
           {previewSegments.slice(0, 20).map((text, i) => {
