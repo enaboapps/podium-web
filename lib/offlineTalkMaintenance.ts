@@ -1,4 +1,4 @@
-import { clearTalkAudio, saveTalkData } from '@/lib/audioStore';
+import { clearStaleSegmentAudio, saveTalkData } from '@/lib/audioStore';
 import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 interface ReplaceCachedTalkDocumentArgs {
@@ -56,6 +56,6 @@ export async function invalidateTalkOfflineState({
   voiceKey,
 }: InvalidateTalkOfflineStateArgs): Promise<void> {
   await replaceCachedTalkDocument({ talkId, title, segments, voiceKey });
-  await clearTalkAudio(talkId);
+  await clearStaleSegmentAudio(talkId, segments);
   await markTalkDocumentOnly({ userId, talkId, segmentCount: segments.length });
 }
