@@ -14,6 +14,29 @@ export async function clearTalkAudio(talkId: string): Promise<void> {
   await Promise.all(talkKeys.map((key) => del(key)));
 }
 
+export async function clearStaleSegmentAudio(
+  talkId: string,
+  newSegments: Array<{ text: string; elements?: unknown[] }>
+): Promise<void> {
+  const allKeys = await keys<string>();
+  const marker = `:${talkId}:`;
+  const talkKeys = allKeys.filter((key) => key.includes(marker));
+
+  const validSuffixes = new Set(
+    newSegments.map((s) =>
+      s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
+    )
+  );
+
+  const staleKeys = talkKeys.filter((key) => {
+    const idx = key.indexOf(marker);
+    const suffix = key.slice(idx + marker.length);
+    return !validSuffixes.has(suffix);
+  });
+
+  await Promise.all(staleKeys.map((key) => del(key)));
+}
+
 const talkStore = createStore('podium-talks', 'talks');
 
 export interface CachedTalk {
