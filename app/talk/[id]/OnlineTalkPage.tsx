@@ -509,8 +509,8 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         </motion.button>
 
         <button
-          onClick={() => { if (speakState === 'spoken' && !isLast) doAdvance(); }}
-          disabled={isLocked || isLast || speakState !== 'spoken'}
+          onClick={() => { if (!isLast) doAdvance(); }}
+          disabled={isLocked || isLast}
           className="w-14 h-14 shrink-0 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 active:scale-95 transition-transform"
         >
           <ArrowRight className="w-5 h-5" />

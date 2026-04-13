@@ -217,13 +217,13 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
             )}
             <button
               onClick={() => {
-                if (speakState !== 'spoken' || isLast) return;
+                if (isLocked || isLast) return;
                 audioRef.current?.pause();
                 audioRef.current = null;
                 setSpeakState('idle');
                 setIndex((prev) => prev + 1);
               }}
-              disabled={isLast || speakState !== 'spoken'}
+              disabled={isLocked || isLast}
               className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
             >{'->'}</button>
           </div>
