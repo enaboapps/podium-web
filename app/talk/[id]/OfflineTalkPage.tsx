@@ -202,6 +202,16 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
             </p>
           </button>
 
+          {/* Next segment preview */}
+          <div className="flex items-baseline gap-2 px-6 py-2 min-h-[2rem]">
+            {!isLast && (
+              <>
+                <span className="text-xs text-[var(--muted)] shrink-0">Next</span>
+                <span className="text-sm text-[var(--muted)]/70 truncate">{segments[index + 1]?.text}</span>
+              </>
+            )}
+          </div>
+
           <div className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
             isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}>

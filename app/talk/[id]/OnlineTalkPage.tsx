@@ -462,6 +462,23 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
+      {/* Next segment preview */}
+      <AnimatePresence mode="wait">
+        {!isLast && (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-baseline gap-2 px-6 py-2"
+          >
+            <span className="text-xs text-[var(--muted)] shrink-0">Next</span>
+            <span className="text-sm text-[var(--muted)]/70 truncate">{segments[index + 1]?.text}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Nav row — back | speak/next | forward */}
       <div className="flex items-center gap-3 px-6 pt-4 pb-10">
         <button
