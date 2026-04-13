@@ -41,6 +41,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [brickSegmentId, setBrickSegmentId] = useState<string | null>(null);
+  const [brickEditorDirty, setBrickEditorDirty] = useState(false);
+  const [brickClosePending, setBrickClosePending] = useState(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -70,6 +72,23 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
 
   const brickSegment = talk?.segments.find((s) => s.id === brickSegmentId) ?? null;
   const brickSegmentIndex = brickSegment ? talk!.segments.indexOf(brickSegment) : -1;
+
+  useEffect(() => {
+    setBrickEditorDirty(false);
+    setBrickClosePending(false);
+  }, [brickSegmentId]);
+
+  function handleBrickClose() {
+    if (brickEditorDirty) {
+      setBrickClosePending(true);
+    } else {
+      setBrickSegmentId(null);
+    }
+  }
+
+  function confirmBrickClose() {
+    setBrickSegmentId(null);
+  }
 
   const handleBrickSave = useCallback(
     async (segmentId: string, elements: SegmentElement[]) => {
@@ -205,11 +224,19 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
 
     {brickSegment && (
       <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background)]">
-        <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
-          <button onClick={() => setBrickSegmentId(null)} className="text-sm text-[var(--muted)]">← Back</button>
-          <span className="text-sm font-semibold">Segment {brickSegmentIndex + 1}</span>
-          <div className="w-16" />
-        </header>
+        {brickClosePending ? (
+          <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
+            <button onClick={() => setBrickClosePending(false)} className="text-sm text-[var(--muted)]">Cancel</button>
+            <span className="text-sm font-semibold text-[var(--foreground)]">Discard changes?</span>
+            <button onClick={confirmBrickClose} className="text-sm font-semibold text-red-400">Discard</button>
+          </header>
+        ) : (
+          <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
+            <button onClick={handleBrickClose} className="text-sm text-[var(--muted)]">← Back</button>
+            <span className="text-sm font-semibold">Segment {brickSegmentIndex + 1}</span>
+            <div className="w-16" />
+          </header>
+        )}
         <SegmentBrickEditor
           key={brickSegment.id}
           initialAnnotations={
@@ -219,6 +246,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           }
           segmentId={brickSegment.id}
           ttsConfig={ttsConfig}
+          onDirtyChange={setBrickEditorDirty}
           onSave={handleBrickSave}
         />
       </div>

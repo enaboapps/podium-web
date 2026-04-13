@@ -15,6 +15,7 @@ import { SegmentWordCanvas } from './SegmentWordCanvas';
 
 interface SegmentBrickEditorProps {
   initialAnnotations: WordAnnotation[];
+  onDirtyChange?: (dirty: boolean) => void;
   onSave: (segmentId: string, elements: SegmentElement[]) => Promise<void>;
   segmentId: string;
   ttsConfig: TTSConfig | null;
@@ -22,6 +23,7 @@ interface SegmentBrickEditorProps {
 
 export function SegmentBrickEditor({
   initialAnnotations,
+  onDirtyChange,
   onSave,
   segmentId,
   ttsConfig,
@@ -52,6 +54,7 @@ export function SegmentBrickEditor({
   function markDirty() {
     setDirty(true);
     setSavedBriefly(false);
+    onDirtyChange?.(true);
   }
 
   function handleWordTap(annotation: WordAnnotation) {
@@ -135,6 +138,7 @@ export function SegmentBrickEditor({
     try {
       await onSave(segmentId, buildElements(annotations));
       setDirty(false);
+      onDirtyChange?.(false);
       setSavedBriefly(true);
       setTimeout(() => setSavedBriefly(false), 2000);
     } finally {
