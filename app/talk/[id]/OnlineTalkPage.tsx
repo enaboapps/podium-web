@@ -10,6 +10,7 @@ import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
+import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
 import { buildSSML, SegmentElement } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
 import OfflineTalkPage from './OfflineTalkPage';
@@ -26,10 +27,11 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
 
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrls = useRef<Map<number, string>>(new Map());
+  const hasHydratedIndexRef = useRef(false);
   const [cacheLoaded, setCacheLoaded] = useState(0);
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheFailed, setCacheFailed] = useState(false);
@@ -230,6 +232,25 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheLoaded, index, waitingForSegment]);
+
+  // Persist current segment index so remounts (hard refresh, offline gate
+  // flips) can resume the user where they were rather than jumping to 0.
+  useEffect(() => {
+    if (!hasHydratedIndexRef.current) {
+      hasHydratedIndexRef.current = true;
+      return; // skip writing the initial value we just read
+    }
+    writeTalkIndex(id, index);
+  }, [id, index]);
+
+  // If the talk was edited and now has fewer segments than the saved/current
+  // index, clamp to the last valid segment so rendering never crashes on
+  // `current.text`.
+  useEffect(() => {
+    if (segments.length > 0 && index >= segments.length) {
+      setIndex(Math.max(0, segments.length - 1));
+    }
+  }, [segments.length, index]);
 
   const current = segments[index];
   const isLast = index === segments.length - 1;

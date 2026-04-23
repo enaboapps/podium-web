@@ -8,6 +8,7 @@ export default function TalkPage({ params }: { params: Promise<{ id: string }> }
   return (
     <OfflineGate
       emergency={<OfflineTalkPage params={params} />}
+      alwaysMountChildren
       unavailableTitle="Offline talk unavailable"
       unavailableMessage="Connect once and open your library online before Podium can present talks offline."
     >
