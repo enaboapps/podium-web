@@ -16,6 +16,7 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
   const [loadedAudioCount, setLoadedAudioCount] = useState(0);
   const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrls = useRef<Map<number, string>>(new Map());
   const hasHydratedIndexRef = useRef(false);
@@ -143,6 +144,15 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
     setIndex((prev) => prev - 1);
   }
 
+  function goToStart() {
+    if (isLocked || index === 0) return;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex(0);
+    setShowRestartConfirm(false);
+  }
+
   if (talk === undefined) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
@@ -236,11 +246,19 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
           <div className={`flex items-center justify-between px-8 pb-10 transition-opacity duration-200 ${
             isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}>
-            <button
-              onClick={back}
-              disabled={index === 0}
-              className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
-            >{'<-'}</button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowRestartConfirm(true)}
+                disabled={isLocked || index === 0}
+                aria-label="Back to start"
+                className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
+              >{'|<'}</button>
+              <button
+                onClick={back}
+                disabled={index === 0}
+                className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
+              >{'<-'}</button>
+            </div>
             {speakState === 'spoken' && isLast ? (
               <a href="/library" className="text-sm text-[var(--primary)] font-medium">Done</a>
             ) : (
@@ -257,6 +275,33 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
               disabled={isLocked || isLast}
               className="w-14 h-14 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 text-lg active:scale-95 transition-transform"
             >{'->'}</button>
+          </div>
+        </>
+      )}
+
+      {showRestartConfirm && (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/60"
+            onClick={() => setShowRestartConfirm(false)}
+          />
+          <div className="fixed left-1/2 top-1/2 z-40 w-[90%] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">Restart talk from the beginning?</h3>
+            <p className="mt-2 text-sm text-[var(--muted)]">This will jump back to the first segment.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowRestartConfirm(false)}
+                className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={goToStart}
+                className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
+              >
+                Restart
+              </button>
+            </div>
           </div>
         </>
       )}

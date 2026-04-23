@@ -3,7 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, WifiOff, Volume2, ChevronRight, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Download, WifiOff, Volume2, ChevronRight, ChevronsLeft, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
@@ -29,6 +29,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
 
   const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrls = useRef<Map<number, string>>(new Map());
   const hasHydratedIndexRef = useRef(false);
@@ -306,6 +307,15 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     setIndex((prev) => prev - 1);
   }
 
+  function goToStart() {
+    if (isLocked || index === 0) return;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex(0);
+    setShowRestartConfirm(false);
+  }
+
   if (forceOfflineFallback && library) {
     return <OfflineTalkPage params={params} />;
   }
@@ -500,8 +510,17 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         )}
       </AnimatePresence>
 
-      {/* Nav row — back | speak/next | forward */}
+      {/* Nav row — restart | back | speak/next | forward */}
       <div className="flex items-center gap-3 px-6 pt-4 pb-10">
+        <button
+          onClick={() => setShowRestartConfirm(true)}
+          disabled={isLocked || index === 0}
+          aria-label="Back to start"
+          className="w-14 h-14 shrink-0 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--foreground)] disabled:opacity-20 active:scale-95 transition-transform"
+        >
+          <ChevronsLeft className="w-5 h-5" />
+        </button>
+
         <button
           onClick={back}
           disabled={isLocked || index === 0}
@@ -559,6 +578,33 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         <div className="flex justify-center pb-6 -mt-4">
           <a href="/library" className="text-sm text-[var(--primary)] font-medium">Back to library</a>
         </div>
+      )}
+
+      {showRestartConfirm && (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/60"
+            onClick={() => setShowRestartConfirm(false)}
+          />
+          <div className="fixed left-1/2 top-1/2 z-40 w-[90%] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">Restart talk from the beginning?</h3>
+            <p className="mt-2 text-sm text-[var(--muted)]">This will jump back to the first segment.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowRestartConfirm(false)}
+                className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={goToStart}
+                className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
+              >
+                Restart
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
