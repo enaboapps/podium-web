@@ -5,6 +5,7 @@ import { OfflineBanner } from '@/components/offline/OfflineBanner';
 import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { getCachedAudio, getTalkData, type CachedTalk } from '@/lib/audioStore';
+import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -13,10 +14,11 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
   const { library, lastSyncedAt } = useOfflineBoot();
   const [talk, setTalk] = useState<CachedTalk | null | undefined>(undefined);
   const [loadedAudioCount, setLoadedAudioCount] = useState(0);
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrls = useRef<Map<number, string>>(new Map());
+  const hasHydratedIndexRef = useRef(false);
 
   const status = library?.talkStatusById[id];
 
@@ -74,6 +76,25 @@ export default function OfflineTalkPage({ params }: { params: Promise<{ id: stri
   }, [id, status?.hasAudio, talk]);
 
   const segments = talk?.segments ?? [];
+
+  // Persist current segment index so remounts (hard refresh, online/offline
+  // gate flips) can resume the user where they were rather than jumping to 0.
+  useEffect(() => {
+    if (!hasHydratedIndexRef.current) {
+      hasHydratedIndexRef.current = true;
+      return; // skip writing the initial value we just read
+    }
+    writeTalkIndex(id, index);
+  }, [id, index]);
+
+  // If the cached talk has fewer segments than the saved/current index, clamp
+  // to the last valid segment so rendering never crashes on `current.text`.
+  useEffect(() => {
+    if (segments.length > 0 && index >= segments.length) {
+      setIndex(Math.max(0, segments.length - 1));
+    }
+  }, [segments.length, index]);
+
   const audioReady = !!status?.hasAudio && !!talk?.voiceKey && loadedAudioCount === segments.length && segments.length > 0;
   const current = segments[index];
   const isLast = index === segments.length - 1;
