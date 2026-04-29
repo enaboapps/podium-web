@@ -1,18 +1,16 @@
 'use client';
 
 import { OfflineGate } from '@/components/offline/OfflineGate';
-import OfflineTalkPage from './OfflineTalkPage';
-import OnlineTalkPage from './OnlineTalkPage';
+import TalkPresentationPage from './TalkPresentationPage';
 
 export default function TalkPage({ params }: { params: Promise<{ id: string }> }) {
   return (
     <OfflineGate
-      emergency={<OfflineTalkPage params={params} />}
       alwaysMountChildren
       unavailableTitle="Offline talk unavailable"
       unavailableMessage="Connect once and open your library online before Podium can present talks offline."
     >
-      <OnlineTalkPage params={params} />
+      <TalkPresentationPage params={params} />
     </OfflineGate>
   );
 }
