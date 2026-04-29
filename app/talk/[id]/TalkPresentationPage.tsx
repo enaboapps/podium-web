@@ -28,7 +28,7 @@ function getSegmentAudioCacheKey(voiceKey: string, talkId: string, segment: Talk
     : `${voiceKey}:${talkId}:${segment.text}`;
 }
 
-export default function OnlineTalkPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TalkPresentationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { clerkId } = useOnlineCurrentUser();
   const { isOnline, library, mode } = useOfflineBoot();
