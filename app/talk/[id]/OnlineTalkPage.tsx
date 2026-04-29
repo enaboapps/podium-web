@@ -1,32 +1,43 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, WifiOff, Volume2, ChevronRight, ChevronsLeft, ArrowLeft, ArrowRight } from 'lucide-react';
+import { OfflineUnavailable } from '@/components/offline/OfflineUnavailable';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio } from '@/lib/audioStore';
+import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio, type CachedTalk } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
 import { buildSSML, SegmentElement } from '@/lib/ssml';
 import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
-import OfflineTalkPage from './OfflineTalkPage';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
 const EARLY_START_THRESHOLD = 0.25; // unlock talk UI once this fraction of segments are cached
+const OFFLINE_UNAVAILABLE_DELAY_MS = 2500;
+
+type TalkSegment = CachedTalk['segments'][number];
+
+function getSegmentAudioCacheKey(voiceKey: string, talkId: string, segment: TalkSegment) {
+  return segment.elements
+    ? `${voiceKey}:${talkId}:ssml:${JSON.stringify(segment.elements)}`
+    : `${voiceKey}:${talkId}:${segment.text}`;
+}
 
 export default function OnlineTalkPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { clerkId } = useOnlineCurrentUser();
-  const { library } = useOfflineBoot();
+  const { isOnline, library, mode } = useOfflineBoot();
 
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
 
+  const [cachedTalkRecord, setCachedTalkRecord] = useState<{ id: string; talk: CachedTalk | null } | undefined>(undefined);
+  const [offlineUnavailableId, setOfflineUnavailableId] = useState<string | null>(null);
   const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
@@ -34,10 +45,12 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const audioUrls = useRef<Map<number, string>>(new Map());
   const hasHydratedIndexRef = useRef(false);
   const [cacheLoaded, setCacheLoaded] = useState(0);
+  const [cachedAudioCount, setCachedAudioCount] = useState(0);
+  const [availableAudioIndexes, setAvailableAudioIndexes] = useState<Set<number>>(() => new Set());
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheFailed, setCacheFailed] = useState(false);
   const [cacheChecked, setCacheChecked] = useState(false);
-  const [forceOfflineFallback, setForceOfflineFallback] = useState(false);
+  const [generationInProgress, setGenerationInProgress] = useState(false);
   const [waitingForSegment, setWaitingForSegment] = useState(false);
 
   const provider = settings?.provider ?? 'elevenlabs';
@@ -58,26 +71,43 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       : null
   ), [isAzure, settings]);
 
-  const effectiveTalk = talk ?? undefined;
+  const settingsVoiceKey = settings
+    ? isAzure
+      ? `azure:${settings.azureVoiceId ?? 'default'}`
+      : `elevenlabs:${settings.elevenLabsVoiceId ?? 'default'}`
+    : undefined;
+  const cachedTalk = cachedTalkRecord?.id === id ? cachedTalkRecord.talk : undefined;
+  const resolvedVoiceKey = settingsVoiceKey ?? cachedTalk?.voiceKey;
+
+  const effectiveTalk = talk ?? cachedTalk ?? undefined;
+  const isShowingCachedTalk = !talk && !!cachedTalk;
   const segments = useMemo(() => effectiveTalk?.segments ?? [], [effectiveTalk]);
-  const voiceKey = isAzure
-    ? `azure:${settings?.azureVoiceId ?? 'default'}`
-    : `elevenlabs:${settings?.elevenLabsVoiceId ?? 'default'}`;
 
   useEffect(() => {
-    if (talk !== undefined) {
-      setForceOfflineFallback(false);
-      return;
+    let cancelled = false;
+
+    async function loadCachedTalk() {
+      const storedTalk = await getTalkData(id);
+      if (cancelled) return;
+      setCachedTalkRecord({ id, talk: storedTalk ?? null });
     }
 
-    if (!library) return;
+    void loadCachedTalk();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (effectiveTalk !== undefined || cachedTalk === undefined || isOnline) return;
 
     const timeout = setTimeout(() => {
-      setForceOfflineFallback(true);
-    }, 2500);
+      setOfflineUnavailableId(id);
+    }, OFFLINE_UNAVAILABLE_DELAY_MS);
 
     return () => clearTimeout(timeout);
-  }, [library, talk]);
+  }, [cachedTalk, effectiveTalk, id, isOnline]);
 
   useEffect(() => {
     if (!talk) return;
@@ -87,7 +117,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       _id: talk._id,
       title: talk.title,
       segments: talk.segments,
-      voiceKey,
+      voiceKey: settingsVoiceKey,
       updatedAt: Date.now(),
     });
 
@@ -104,30 +134,39 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         lastPreparedAt: existingStatus?.lastPreparedAt ?? null,
       });
     })();
-  }, [clerkId, id, talk, voiceKey]);
+  }, [clerkId, id, settingsVoiceKey, talk]);
+
+  // Stable identity string that changes when segment content or voice changes.
+  const audioIdentityKey = (resolvedVoiceKey ?? 'no-voice') + segments.map(s =>
+    s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
+  ).join('|');
 
   useEffect(() => {
-    if (!ttsConfig || segments.length === 0 || !clerkId) return;
-
-    const userId = clerkId;
-    const activeTtsConfig = ttsConfig;
     const controller = new AbortController();
     const { signal } = controller;
     const currentAudioUrls = audioUrls.current;
+    const activeVoiceKey = resolvedVoiceKey;
 
-    async function prepare() {
-      // Clear stale audio if the voice has changed since the last download
-      const storedTalk = await getTalkData(id);
-      if (storedTalk?.voiceKey && storedTalk.voiceKey !== voiceKey) {
-        await clearTalkAudio(id);
-      }
+    async function scanCachedAudio() {
+      await Promise.resolve();
       if (signal.aborted) return;
+
+      setCacheReady(false);
+      setCacheChecked(false);
+      setCacheLoaded(0);
+      setCachedAudioCount(0);
+      setAvailableAudioIndexes(new Set());
+      setCacheFailed(false);
+      setWaitingForSegment(false);
+
+      if (!activeVoiceKey || segments.length === 0) {
+        setCacheChecked(true);
+        return;
+      }
 
       const idbResults = await Promise.all(
         segments.map(async (segment, segmentIndex) => {
-          const cacheKey = segment.elements
-            ? `${voiceKey}:${id}:ssml:${JSON.stringify(segment.elements)}`
-            : `${voiceKey}:${id}:${segment.text}`;
+          const cacheKey = getSegmentAudioCacheKey(activeVoiceKey, id, segment);
           return { segmentIndex, segment, cacheKey, blob: await getCachedAudio(cacheKey) };
         })
       );
@@ -135,35 +174,60 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
       if (signal.aborted) return;
 
       const hits = idbResults.filter((result) => result.blob);
-      const misses = idbResults.filter((result) => !result.blob);
 
       hits.forEach(({ segmentIndex, blob }) => {
         currentAudioUrls.set(segmentIndex, URL.createObjectURL(blob!));
       });
 
-      if (misses.length === 0) {
-        setCacheLoaded(segments.length);
-        setCacheReady(true);
-        setCacheChecked(true);
-        await saveTalkPreparedState(userId, id, {
-          talkId: id,
-          hasDocument: true,
-          hasAudio: true,
-          segmentCount: segments.length,
-          cachedAudioSegments: segments.length,
-          lastPreparedAt: Date.now(),
-        });
-        return;
-      }
-
       setCacheLoaded(hits.length);
+      setCachedAudioCount(hits.length);
+      setAvailableAudioIndexes(new Set(hits.map(({ segmentIndex }) => segmentIndex)));
+      setCacheReady(hits.length === segments.length);
       setCacheChecked(true);
+    }
 
-      let completed = hits.length;
+    void scanCachedAudio();
+
+    return () => {
+      controller.abort();
+      currentAudioUrls.forEach((url) => URL.revokeObjectURL(url));
+      currentAudioUrls.clear();
+    };
+  }, [audioIdentityKey, id, resolvedVoiceKey, segments]);
+
+  useEffect(() => {
+    if (!resolvedVoiceKey || !settingsVoiceKey || !ttsConfig || segments.length === 0 || !clerkId || !isOnline) {
+      const timeout = setTimeout(() => setGenerationInProgress(false), 0);
+      return () => clearTimeout(timeout);
+    }
+
+    const userId = clerkId;
+    const activeTtsConfig = ttsConfig;
+    const activeSettingsVoiceKey = settingsVoiceKey;
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    async function prepareMissingAudio() {
+      setGenerationInProgress(true);
+
+      // Only clear stale voice audio when live settings are available. Offline
+      // playback should never delete a cached voice that may be the only usable
+      // speech on the device.
+      const storedTalk = await getTalkData(id);
+      if (storedTalk?.voiceKey && storedTalk.voiceKey !== activeSettingsVoiceKey) {
+        await clearTalkAudio(id);
+      }
+      if (signal.aborted) return;
+
+      let completed = audioUrls.current.size;
       let hadFailure = false;
 
-      for (const { segmentIndex, cacheKey, segment } of misses) {
+      for (const [segmentIndex, segment] of segments.entries()) {
         if (signal.aborted) break;
+        if (audioUrls.current.has(segmentIndex)) continue;
+
+        const cacheKey = getSegmentAudioCacheKey(activeSettingsVoiceKey, id, segment);
+
         try {
           const ttsText = isAzure && segment.elements
             ? buildSSML(segment.elements as SegmentElement[])
@@ -172,111 +236,59 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
           if (signal.aborted) break;
           await setCachedAudio(cacheKey, blob);
           audioUrls.current.set(segmentIndex, URL.createObjectURL(blob));
+          completed = audioUrls.current.size;
+          setCacheLoaded(completed);
+          setCachedAudioCount(completed);
+          setAvailableAudioIndexes(new Set(audioUrls.current.keys()));
+          if (completed === segments.length) setCacheReady(true);
         } catch (err) {
           if ((err as Error).name === 'AbortError') break;
           hadFailure = true;
           setCacheFailed(true);
-        } finally {
-          if (!signal.aborted) {
-            completed++;
-            setCacheLoaded(completed);
-            if (completed === segments.length) setCacheReady(true);
-          }
         }
       }
 
+      if (signal.aborted) return;
+
+      const preparedCount = audioUrls.current.size;
       await saveTalkPreparedState(userId, id, {
         talkId: id,
         hasDocument: true,
-        hasAudio: !hadFailure && currentAudioUrls.size === segments.length,
+        hasAudio: !hadFailure && preparedCount === segments.length,
         segmentCount: segments.length,
-        cachedAudioSegments: currentAudioUrls.size,
-        lastPreparedAt: currentAudioUrls.size > 0 ? Date.now() : null,
+        cachedAudioSegments: preparedCount,
+        lastPreparedAt: preparedCount > 0 ? Date.now() : null,
       });
+      setGenerationInProgress(false);
     }
 
-    void prepare();
+    void prepareMissingAudio();
 
     return () => {
       controller.abort();
-      currentAudioUrls.forEach((url) => URL.revokeObjectURL(url));
-      currentAudioUrls.clear();
+      setGenerationInProgress(false);
     };
-  }, [clerkId, id, isAzure, segments, ttsConfig, voiceKey]);
+  }, [audioIdentityKey, clerkId, id, isAzure, isOnline, resolvedVoiceKey, segments, settingsVoiceKey, ttsConfig]);
 
-  // Stable identity string that changes when segment content or voice changes
-  const audioIdentityKey = voiceKey + segments.map(s =>
-    s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
-  ).join('|');
-
-  // Reset cache state whenever the audio identity changes (voice or SSML update)
   useEffect(() => {
-    setCacheReady(false);
-    setCacheChecked(false);
-    setCacheLoaded(0);
-    setCacheFailed(false);
-    setWaitingForSegment(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioIdentityKey]);
+    if (!clerkId || segments.length === 0 || !cacheChecked) return;
+
+    void saveTalkPreparedState(clerkId, id, {
+      talkId: id,
+      hasDocument: true,
+      hasAudio: cachedAudioCount === segments.length,
+      segmentCount: segments.length,
+      cachedAudioSegments: cachedAudioCount,
+      lastPreparedAt: cachedAudioCount > 0 ? Date.now() : null,
+    });
+  }, [cacheChecked, cachedAudioCount, clerkId, id, segments.length]);
 
   const earlyStartReady =
     cacheChecked &&
     segments.length > 0 &&
     cacheLoaded >= Math.max(1, Math.ceil(segments.length * EARLY_START_THRESHOLD));
 
-  // Auto-play when a segment the user is waiting on becomes available
-  useEffect(() => {
-    if (!waitingForSegment) return;
-    if (audioUrls.current.has(index)) {
-      setWaitingForSegment(false);
-      void speakAt(index);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheLoaded, index, waitingForSegment]);
-
-  // Persist current segment index so remounts (hard refresh, offline gate
-  // flips) can resume the user where they were rather than jumping to 0.
-  useEffect(() => {
-    if (!hasHydratedIndexRef.current) {
-      hasHydratedIndexRef.current = true;
-      return; // skip writing the initial value we just read
-    }
-    writeTalkIndex(id, index);
-  }, [id, index]);
-
-  // If the talk was edited and now has fewer segments than the saved/current
-  // index, clamp to the last valid segment so rendering never crashes on
-  // `current.text`.
-  useEffect(() => {
-    if (segments.length > 0 && index >= segments.length) {
-      setIndex(Math.max(0, segments.length - 1));
-    }
-  }, [segments.length, index]);
-
-  const current = segments[index];
-  const isLast = index === segments.length - 1;
-  const isLocked = speakState === 'loading' || speakState === 'speaking';
-
-  function doSpeak() {
-    void speakAt(index);
-  }
-
-  function doAdvance() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setSpeakState('idle');
-    setIndex((prev) => prev + 1);
-  }
-
-  function doAdvanceAndSpeak() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    const nextIndex = index + 1;
-    setIndex(nextIndex);
-    void speakAt(nextIndex);
-  }
-
-  async function speakAt(targetIndex: number) {
+  const speakAt = useCallback(async (targetIndex: number) => {
     const url = audioUrls.current.get(targetIndex);
     if (!url) {
       setWaitingForSegment(true);
@@ -297,6 +309,65 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     } catch {
       setSpeakState('idle');
     }
+  }, []);
+
+  // Auto-play when a segment the user is waiting on becomes available
+  useEffect(() => {
+    if (!waitingForSegment) return;
+    if (audioUrls.current.has(index)) {
+      const timeout = setTimeout(() => {
+        setWaitingForSegment(false);
+        void speakAt(index);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [cacheLoaded, index, speakAt, waitingForSegment]);
+
+  // Persist current segment index so remounts (hard refresh, offline gate
+  // flips) can resume the user where they were rather than jumping to 0.
+  useEffect(() => {
+    if (!hasHydratedIndexRef.current) {
+      hasHydratedIndexRef.current = true;
+      return; // skip writing the initial value we just read
+    }
+    writeTalkIndex(id, index);
+  }, [id, index]);
+
+  // If the talk was edited and now has fewer segments than the saved/current
+  // index, clamp to the last valid segment so rendering never crashes on
+  // `current.text`.
+  useEffect(() => {
+    if (segments.length > 0 && index >= segments.length) {
+      const timeout = setTimeout(() => setIndex(Math.max(0, segments.length - 1)), 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [segments.length, index]);
+
+  const current = segments[index];
+  const isLast = index === segments.length - 1;
+  const isLocked = speakState === 'loading' || speakState === 'speaking';
+  const currentSegmentHasAudio = availableAudioIndexes.has(index);
+  const canPrepareCurrentSegment = isOnline && !!ttsConfig && generationInProgress;
+  const missingSpeechForCurrentSegment = cacheChecked && !currentSegmentHasAudio;
+  const offlinePresentation = !isOnline || mode === 'offline-emergency' || isShowingCachedTalk;
+
+  function doSpeak() {
+    void speakAt(index);
+  }
+
+  function doAdvance() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeakState('idle');
+    setIndex((prev) => prev + 1);
+  }
+
+  function doAdvanceAndSpeak() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    const nextIndex = index + 1;
+    setIndex(nextIndex);
+    void speakAt(nextIndex);
   }
 
   function back() {
@@ -316,14 +387,23 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     setShowRestartConfirm(false);
   }
 
-  if (forceOfflineFallback && library) {
-    return <OfflineTalkPage params={params} />;
-  }
-
   if (effectiveTalk === undefined) {
+    if (offlineUnavailableId === id && !library) {
+      return (
+        <OfflineUnavailable
+          title="Talk unavailable offline"
+          message="This talk was not prepared on this device before going offline."
+          href="/library"
+          actionLabel="Back to library"
+        />
+      );
+    }
+
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[var(--background)]">
-        <p className="text-[var(--muted)] text-sm">Loading...</p>
+        <p className="text-[var(--muted)] text-sm">
+          {isOnline ? 'Loading...' : 'Loading cached talk...'}
+        </p>
       </div>
     );
   }
@@ -337,7 +417,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  if (ttsReady && cacheChecked && !earlyStartReady) {
+  if (isOnline && ttsReady && generationInProgress && cacheChecked && !earlyStartReady) {
     const progress = segments.length > 0 ? cacheLoaded / segments.length : 0;
     const percent = Math.round(progress * 100);
 
@@ -405,13 +485,20 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
   const noTTSMessage = isAzure ? 'Add Azure credentials in Settings' : 'Add ElevenLabs key in Settings';
 
   const speakButtonLabel =
-    waitingForSegment ? 'Preparing...' :
+    waitingForSegment || (missingSpeechForCurrentSegment && canPrepareCurrentSegment) ? 'Preparing...' :
+    missingSpeechForCurrentSegment && !isOnline ? 'Speech unavailable offline' :
+    missingSpeechForCurrentSegment ? 'Speech unavailable' :
     speakState === 'loading' ? 'Loading...' :
     speakState === 'speaking' ? 'Speaking...' :
     speakState === 'spoken' ? (isLast ? 'Done!' : 'Next') :
-    ttsReady ? 'Speak' : noTTSMessage;
+    currentSegmentHasAudio ? 'Speak' :
+    ttsReady ? 'Preparing...' : noTTSMessage;
 
-  const speakButtonDisabled = !ttsReady || isLocked || waitingForSegment || (speakState === 'spoken' && isLast);
+  const speakButtonDisabled =
+    isLocked ||
+    waitingForSegment ||
+    (speakState === 'spoken' && isLast) ||
+    (speakState !== 'spoken' && !currentSegmentHasAudio);
 
   function handleSpeakButton() {
     if (speakState === 'spoken' && !isLast) {
@@ -441,6 +528,15 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
         </a>
       </header>
 
+      {offlinePresentation && (
+        <div className="border-y border-[var(--border)] bg-[var(--surface)]/80 px-5 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-[var(--foreground)]">Offline</span>
+            <span className="truncate text-xs text-[var(--muted)]">Using saved speech where available</span>
+          </div>
+        </div>
+      )}
+
       <div className="h-1 bg-[var(--border)]">
         <div
           className="h-full bg-[var(--primary)] rounded-r-full transition-all duration-300"
@@ -450,7 +546,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
 
       {/* Background download banner */}
       <AnimatePresence>
-        {earlyStartReady && !cacheReady && (
+        {earlyStartReady && !cacheReady && isOnline && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -553,7 +649,7 @@ export default function OnlineTalkPage({ params }: { params: Promise<{ id: strin
               <motion.span key="next" initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
                 Next <ChevronRight className="w-4 h-4" />
               </motion.span>
-            ) : speakState === 'idle' && ttsReady ? (
+            ) : speakState === 'idle' && currentSegmentHasAudio ? (
               <motion.span key="speak" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                 <Volume2 className="w-4 h-4" /> Speak
               </motion.span>
