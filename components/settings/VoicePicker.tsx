@@ -19,7 +19,6 @@ interface VoicePickerProps {
   voicesError: string;
   onRetry: () => void;
   voicesLoading: boolean;
-  onPreview: (voice: TTSVoice) => void;
   onSelectVoice: (voiceId: string) => Promise<void>;
   onTest?: () => Promise<void>;
 }
@@ -30,7 +29,6 @@ export function VoicePicker({
   voices,
   voicesError,
   voicesLoading,
-  onPreview,
   onSelectVoice,
   onTest,
   onRetry,
@@ -69,7 +67,7 @@ export function VoicePicker({
   return (
     <section>
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">
-        Voice
+        Choose a voice
       </h2>
       {voicesLoading ? (
         <p role="status" className="text-sm text-[var(--muted)]">
@@ -101,35 +99,42 @@ export function VoicePicker({
       )}
       {!voicesLoading && !voicesError && voices.length > 0 ? (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              value={genderFilter}
-              onChange={(e) => setGenderFilter(e.target.value as GenderFilter)}
-              aria-label="Filter by gender"
-              className={selectClass}
-            >
-              <option value="All">All genders</option>
-              <option value="Female">Female</option>
-              <option value="Male">Male</option>
-              <option value="Unknown">Unknown</option>
-            </select>
-            <select
-              value={langFilter}
-              onChange={(e) => setLangFilter(e.target.value)}
-              aria-label="Filter by language"
-              className={selectClass}
-            >
-              <option value="All">All languages</option>
-              {languageOptions.map((o) => (
-                <option key={o.bcp47} value={o.bcp47}>
-                  {o.display || o.bcp47}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="text-xs text-[var(--muted)]">
-            {filteredVoices.length} of {voices.length} voices
-          </p>
+          <details>
+            <summary className="min-h-11 cursor-pointer py-3 text-sm underline">
+              Filter voices
+            </summary>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={genderFilter}
+                onChange={(e) =>
+                  setGenderFilter(e.target.value as GenderFilter)
+                }
+                aria-label="Filter by gender"
+                className={selectClass}
+              >
+                <option value="All">All genders</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+              <select
+                value={langFilter}
+                onChange={(e) => setLangFilter(e.target.value)}
+                aria-label="Filter by language"
+                className={selectClass}
+              >
+                <option value="All">All languages</option>
+                {languageOptions.map((o) => (
+                  <option key={o.bcp47} value={o.bcp47}>
+                    {o.display || o.bcp47}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-[var(--muted)]">
+              {filteredVoices.length} of {voices.length} voices
+            </p>
+          </details>
           {filteredVoices.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
               No voices match the selected filters.
@@ -168,15 +173,6 @@ export function VoicePicker({
                   </option>
                 ))}
               </select>
-              {selectedVoice?.previewUrl ? (
-                <button
-                  type="button"
-                  onClick={() => onPreview(selectedVoice)}
-                  className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-                >
-                  Preview
-                </button>
-              ) : null}
               {onTest ? (
                 <button
                   type="button"
@@ -196,7 +192,7 @@ export function VoicePicker({
                   }}
                   className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
                 >
-                  {testing ? "Testing…" : "Test voice"}
+                  {testing ? "Testing…" : "Try voice"}
                 </button>
               ) : null}
             </div>
@@ -205,7 +201,7 @@ export function VoicePicker({
       ) : null}
       {onTest && (
         <p className="mt-3 text-sm text-[var(--muted)]">
-          Testing a voice generates speech and may consume provider usage.
+          Trying a voice uses your service’s speech allowance.
         </p>
       )}
     </section>

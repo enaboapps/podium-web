@@ -8,7 +8,7 @@ vi.mock("js-tts-wrapper/browser", () => ({
 afterEach(cleanup);
 const voice = {
   id: "voice",
-  name: "Test voice",
+  name: "Try voice",
   provider: "elevenlabs",
   languageCodes: [],
 };
@@ -46,8 +46,8 @@ it("catches speech failures and explains usage before testing", async () => {
       onTest={vi.fn().mockRejectedValue(new Error("secret provider body"))}
     />,
   );
-  expect(screen.getByText(/may consume provider usage/)).toBeTruthy();
-  await userEvent.click(screen.getByRole("button", { name: "Test voice" }));
+  expect(screen.getByText(/speech allowance/)).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Try voice" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
     "Check synthesis permissions",
   );
