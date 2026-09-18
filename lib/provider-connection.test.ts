@@ -65,11 +65,11 @@ describe("voice access checks", () => {
       400,
       "invalid_api_key_length",
       "invalid_credentials",
-      "complete secret key",
+      "incorrect key length",
     ],
-    [401, "invalid_api_key", "invalid_credentials", "rejected"],
+    [401, "invalid_api_key", "invalid_credentials", "did not recognize"],
     [401, "missing_permissions", "missing_permissions", "permissions"],
-    [403, "", "missing_permissions", "permissions"],
+    [403, "", "provider_rejected", "does not confirm"],
     [429, "", "rate_limited", "Wait"],
     [503, "", "unavailable", "temporarily"],
   ])(
@@ -90,6 +90,53 @@ describe("voice access checks", () => {
       expect(JSON.stringify(result)).not.toContain("SECRET");
     },
   );
+  it.each([400, 401, 403])(
+    "does not blame credentials for an unknown HTTP %s rejection",
+    async (status) => {
+      vi.stubGlobal(
+        "fetch",
+        response(status, {
+          detail: {
+            status: "unknown_SECRET",
+            message: "SECRET MUST NOT ESCAPE",
+          },
+        }),
+      );
+      const result = await checkConnection(el);
+      expect(result).toMatchObject({
+        code: "provider_rejected",
+        httpStatus: status,
+      });
+      expect(result).not.toHaveProperty("providerCode");
+      expect(JSON.stringify(result)).not.toContain("SECRET");
+    },
+  );
+  it("retains the observed invalid_api_key response without echoing its message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      response(401, {
+        detail: {
+          status: "invalid_api_key",
+          message: "secret echoed by provider",
+        },
+      }),
+    );
+    expect(await checkConnection(el)).toMatchObject({
+      code: "invalid_credentials",
+      httpStatus: 401,
+      providerCode: "invalid_api_key",
+      message: expect.stringContaining("submitted key"),
+    });
+  });
+  it("does not substring-match untrusted provider codes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      response(401, { detail: { status: "invalid_api_key_SECRET" } }),
+    );
+    expect(await checkConnection(el)).toMatchObject({
+      code: "provider_rejected",
+    });
+  });
   it("explains Azure key and region mismatch", async () => {
     vi.stubGlobal("fetch", response(401, {}));
     expect(await checkConnection(az)).toMatchObject({

@@ -1,6 +1,7 @@
 import type { TTSConfig, TTSVoice } from "./tts";
 
 export type ConnectionErrorCode =
+  | "provider_rejected"
   | "invalid_credentials"
   | "missing_permissions"
   | "rate_limited"
@@ -8,9 +9,23 @@ export type ConnectionErrorCode =
   | "network"
   | "timeout"
   | "cancelled";
+const providerCodes = [
+  "invalid_api_key",
+  "invalid_api_key_length",
+  "api_key_id_used_as_api_key",
+  "missing_permissions",
+] as const;
+export type ProviderErrorCode = (typeof providerCodes)[number];
+
 export type ConnectionResult =
   | { ok: true; voices: TTSVoice[] }
-  | { ok: false; code: ConnectionErrorCode; message: string };
+  | {
+      ok: false;
+      code: ConnectionErrorCode;
+      message: string;
+      httpStatus?: number;
+      providerCode?: ProviderErrorCode;
+    };
 type Failure = Extract<ConnectionResult, { ok: false }>;
 const failure = (code: ConnectionErrorCode, message: string): Failure => ({
   ok: false,
@@ -25,35 +40,57 @@ const str = (value: unknown) => (typeof value === "string" ? value : "");
 
 function providerError(status: number, body: unknown, azure: boolean): Failure {
   const detail = record(record(body).detail);
-  const code = `${str(detail.code)} ${str(detail.status)}`;
-  if (code.includes("api_key_id_used_as_api_key"))
-    return failure(
+  // Only recognized constants may escape the provider response. A code or message
+  // can contain credential material, so never echo arbitrary provider strings.
+  const providerCode = providerCodes.find(
+    (known) => detail.code === known || detail.status === known,
+  );
+  const reject = (code: ConnectionErrorCode, message: string): Failure => ({
+    ...failure(code, message),
+    httpStatus: status,
+    ...(providerCode ? { providerCode } : {}),
+  });
+  if (providerCode === "api_key_id_used_as_api_key")
+    return reject(
       "invalid_credentials",
       "This is an API key ID. Copy the full secret key shown when you create a key in ElevenLabs. Do not add a prefix yourself.",
     );
   if (status === 429)
-    return failure(
+    return reject(
       "rate_limited",
       "Too many requests. Wait a moment, then check the connection again.",
     );
   if (status >= 500)
-    return failure(
+    return reject(
       "unavailable",
       "The provider is temporarily unavailable. Try again later.",
     );
-  if (code.includes("missing_permissions") || (!azure && status === 403))
-    return failure(
+  if (providerCode === "missing_permissions")
+    return reject(
       "missing_permissions",
       "This key cannot list voices. Enable voice access in the provider’s key permissions, then try again.",
     );
-  if ([400, 401, 403].includes(status))
-    return failure(
+  if (!azure && providerCode === "invalid_api_key_length")
+    return reject(
       "invalid_credentials",
-      azure
-        ? "Azure could not verify these credentials. Check that the Speech resource key and region belong to the same resource."
-        : "ElevenLabs rejected this key. Copy the complete secret key from ElevenLabs, not its ID, and check that it has not expired.",
+      "ElevenLabs reports an incorrect key length. Copy the complete secret key without adding or removing a prefix.",
     );
-  return failure(
+  if (!azure && providerCode === "invalid_api_key")
+    return reject(
+      "invalid_credentials",
+      "ElevenLabs did not recognize the submitted key. Copy the complete secret key again and check that it is still active.",
+    );
+  if (azure && [400, 401, 403].includes(status))
+    return reject(
+      "invalid_credentials",
+      "Azure could not verify these credentials. Check that the Speech resource key and region belong to the same resource.",
+    );
+  if (status >= 400 && status < 500)
+    return reject(
+      "provider_rejected",
+      `The provider rejected the voice-list request (HTTP ${status}). This response does not confirm that the key is invalid. Retry, or contact the provider if it continues.`,
+    );
+  return reject(
     "unavailable",
     "The provider could not load voices. Please try again.",
   );
