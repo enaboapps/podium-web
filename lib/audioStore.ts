@@ -1,4 +1,7 @@
 import { createStore, del, get, keys, set } from 'idb-keyval';
+import { DeliverySegment, getSegmentAudioIdentity } from '@/lib/delivery';
+
+export type CachedSegment = DeliverySegment & { id: string };
 
 export async function getCachedAudio(key: string): Promise<Blob | undefined> {
   return get<Blob>(key);
@@ -16,17 +19,13 @@ export async function clearTalkAudio(talkId: string): Promise<void> {
 
 export async function clearStaleSegmentAudio(
   talkId: string,
-  newSegments: Array<{ text: string; elements?: unknown[] }>
+  newSegments: DeliverySegment[]
 ): Promise<void> {
   const allKeys = await keys<string>();
   const marker = `:${talkId}:`;
   const talkKeys = allKeys.filter((key) => key.includes(marker));
 
-  const validSuffixes = new Set(
-    newSegments.map((s) =>
-      s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
-    )
-  );
+  const validSuffixes = new Set(newSegments.map(getSegmentAudioIdentity));
 
   const staleKeys = talkKeys.filter((key) => {
     const idx = key.indexOf(marker);
@@ -42,7 +41,7 @@ const talkStore = createStore('podium-talks', 'talks');
 export interface CachedTalk {
   _id: string;
   title: string;
-  segments: Array<{ id: string; text: string; elements?: unknown[] }>;
+  segments: CachedSegment[];
   voiceKey?: string;
   updatedAt: number;
 }

@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { deliveryWordValidator, moodValidator, paceValidator, segmentValidator } from './schema';
 
 export const get = query({
   args: { id: v.id('talks') },
@@ -51,7 +52,8 @@ export const saveEditedText = mutation({
     id: v.id('talks'),
     userId: v.string(),
     fullText: v.string(),
-    segments: v.array(v.object({ id: v.string(), text: v.string() })),
+    /** Unchanged segments carry their delivery presets over from the client */
+    segments: v.array(segmentValidator),
     segmentMode: v.union(v.literal('paragraphs'), v.literal('sentences')),
   },
   handler: async (ctx, { id, userId, fullText, segments, segmentMode }) => {
@@ -111,28 +113,26 @@ export const getVersions = query({
   },
 });
 
-export const saveSegmentElements = mutation({
+export const saveSegmentDelivery = mutation({
   args: {
     id: v.id('talks'),
     userId: v.string(),
     segmentId: v.string(),
-    elements: v.array(v.union(
-      v.object({ type: v.literal('word'), text: v.string() }),
-      v.object({ type: v.literal('emphasis-open') }),
-      v.object({ type: v.literal('emphasis-close') }),
-      v.object({ type: v.literal('prosody-open'), rate: v.optional(v.number()), pitch: v.optional(v.string()), volume: v.optional(v.string()) }),
-      v.object({ type: v.literal('prosody-close') }),
-      v.object({ type: v.literal('break'), ms: v.number() }),
-      v.object({ type: v.literal('tag'), value: v.string() }),
-      v.object({ type: v.literal('say-as'), text: v.string(), interpretAs: v.literal('characters') }),
-    )),
+    words: v.array(deliveryWordValidator),
+    mood: v.optional(moodValidator),
+    pace: v.optional(paceValidator),
   },
-  handler: async (ctx, { id, userId, segmentId, elements }) => {
+  handler: async (ctx, { id, userId, segmentId, words, mood, pace }) => {
     const talk = await ctx.db.get(id);
     if (!talk || talk.userId !== userId) throw new Error('Not found');
-    const segments = talk.segments.map((s) =>
-      s.id === segmentId ? { ...s, elements } : s
-    );
+    const segments = talk.segments.map((s) => {
+      if (s.id !== segmentId) return s;
+      // Legacy `elements` are replaced by `words` once a segment is edited;
+      // an absent mood/pace means "normal", so drop any previous value.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { elements, mood: _mood, pace: _pace, ...rest } = s;
+      return { ...rest, words, ...(mood && { mood }), ...(pace && { pace }) };
+    });
     await ctx.db.patch(id, { segments });
   },
 });

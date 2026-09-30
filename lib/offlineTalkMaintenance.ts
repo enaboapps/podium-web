@@ -1,10 +1,10 @@
-import { clearStaleSegmentAudio, saveTalkData } from '@/lib/audioStore';
+import { CachedSegment, clearStaleSegmentAudio, saveTalkData } from '@/lib/audioStore';
 import { saveTalkPreparedState } from '@/lib/offlineStore';
 
 interface ReplaceCachedTalkDocumentArgs {
   talkId: string;
   title: string;
-  segments: Array<{ id: string; text: string; elements?: unknown[] }>;
+  segments: CachedSegment[];
   voiceKey?: string;
 }
 

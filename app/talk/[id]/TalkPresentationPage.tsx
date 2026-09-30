@@ -12,8 +12,8 @@ import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio, type CachedTalk } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
-import { buildSSML, SegmentElement } from '@/lib/ssml';
-import { fetchTTSBlob, TTSConfig } from '@/lib/tts';
+import { getSegmentAudioIdentity } from '@/lib/delivery';
+import { fetchSegmentBlob, getTTSConfig, getVoiceKey } from '@/lib/tts';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -23,9 +23,7 @@ const OFFLINE_UNAVAILABLE_DELAY_MS = 2500;
 type TalkSegment = CachedTalk['segments'][number];
 
 function getSegmentAudioCacheKey(voiceKey: string, talkId: string, segment: TalkSegment) {
-  return segment.elements
-    ? `${voiceKey}:${talkId}:ssml:${JSON.stringify(segment.elements)}`
-    : `${voiceKey}:${talkId}:${segment.text}`;
+  return `${voiceKey}:${talkId}:${getSegmentAudioIdentity(segment)}`;
 }
 
 export default function TalkPresentationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,23 +57,9 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
     ? !!(settings?.azureSubscriptionKey && settings?.azureRegion)
     : !!settings?.elevenLabsApiKey;
 
-  const ttsConfig: TTSConfig | null = useMemo(() => (
-    settings
-      ? isAzure
-        ? settings.azureSubscriptionKey && settings.azureRegion
-          ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey, region: settings.azureRegion, voiceId: settings.azureVoiceId }
-          : null
-        : settings.elevenLabsApiKey
-          ? { provider: 'elevenlabs', apiKey: settings.elevenLabsApiKey, voiceId: settings.elevenLabsVoiceId }
-          : null
-      : null
-  ), [isAzure, settings]);
+  const ttsConfig = useMemo(() => getTTSConfig(settings), [settings]);
 
-  const settingsVoiceKey = settings
-    ? isAzure
-      ? `azure:${settings.azureVoiceId ?? 'default'}`
-      : `elevenlabs:${settings.elevenLabsVoiceId ?? 'default'}`
-    : undefined;
+  const settingsVoiceKey = settings ? getVoiceKey(settings) : undefined;
   const cachedTalk = cachedTalkRecord?.id === id ? cachedTalkRecord.talk : undefined;
   const resolvedVoiceKey = settingsVoiceKey ?? cachedTalk?.voiceKey;
 
@@ -137,9 +121,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
   }, [clerkId, id, settingsVoiceKey, talk]);
 
   // Stable identity string that changes when segment content or voice changes.
-  const audioIdentityKey = (resolvedVoiceKey ?? 'no-voice') + segments.map(s =>
-    s.elements ? `ssml:${JSON.stringify(s.elements)}` : s.text
-  ).join('|');
+  const audioIdentityKey = (resolvedVoiceKey ?? 'no-voice') + segments.map(getSegmentAudioIdentity).join('|');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -229,10 +211,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
         const cacheKey = getSegmentAudioCacheKey(activeSettingsVoiceKey, id, segment);
 
         try {
-          const ttsText = isAzure && segment.elements
-            ? buildSSML(segment.elements as SegmentElement[])
-            : segment.text;
-          const blob = await fetchTTSBlob(ttsText, activeTtsConfig);
+          const blob = await fetchSegmentBlob(segment, activeTtsConfig);
           if (signal.aborted) break;
           await setCachedAudio(cacheKey, blob);
           audioUrls.current.set(segmentIndex, URL.createObjectURL(blob));

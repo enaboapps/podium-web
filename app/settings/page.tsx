@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { ElevenLabsModelPicker } from "@/components/settings/ElevenLabsModelPicker";
 import { VoiceSetup } from "@/components/settings/VoiceSetup";
 import { OfflineGate } from "@/components/offline/OfflineGate";
 import { api } from "@/convex/_generated/api";
@@ -33,18 +34,22 @@ function OnlineSettingsPage() {
   const clearApiKey = useMutation(api.users.clearApiKey);
   const clearAzureCredentials = useMutation(api.users.clearAzureCredentials);
   const saveVoiceId = useMutation(api.users.saveVoiceId);
+  const saveElevenLabsModel = useMutation(api.users.saveElevenLabsModel);
   const elKey = settings?.elevenLabsApiKey;
+  const elModel = settings?.elevenLabsModelId;
   const azKey = settings?.azureSubscriptionKey;
   const azRegion = settings?.azureRegion;
   const configs = useMemo<Record<TTSConfig["provider"], TTSConfig | null>>(
     () => ({
-      elevenlabs: elKey ? { provider: "elevenlabs", apiKey: elKey } : null,
+      elevenlabs: elKey
+        ? { provider: "elevenlabs", apiKey: elKey, modelId: elModel }
+        : null,
       azure:
         azKey && azRegion
           ? { provider: "azure", subscriptionKey: azKey, region: azRegion }
           : null,
     }),
-    [elKey, azKey, azRegion],
+    [elKey, elModel, azKey, azRegion],
   );
   const audio = useRef<HTMLAudioElement | null>(null);
   const audioUrl = useRef<string | null>(null);
@@ -126,6 +131,15 @@ function OnlineSettingsPage() {
               onTryVoice={tryVoice}
             />
           )}
+          {settings && settings.provider !== "azure" && elKey ? (
+            <ElevenLabsModelPicker
+              modelId={elModel}
+              onSelect={async (modelId) => {
+                if (!clerkId) throw new Error("Sign in again");
+                await saveElevenLabsModel({ clerkId, modelId });
+              }}
+            />
+          ) : null}
         </main>
       </div>
     </div>

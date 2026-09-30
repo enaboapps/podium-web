@@ -1,52 +1,51 @@
 'use client';
 
-import { WordAnnotation } from '@/lib/ssml';
-import { formatPauseLabel, getWordChipClass } from '@/lib/segmentEditorStyles';
+import { DeliveryWord, PAUSE_PRESETS } from '@/lib/delivery';
 
 interface SegmentWordCanvasProps {
-  activeMode: boolean;
-  anchorId: string | null;
-  annotations: WordAnnotation[];
-  onWordTap: (annotation: WordAnnotation) => void;
-  onPauseTap: (id: string) => void;
+  words: DeliveryWord[];
+  selectedIndex: number | null;
+  onWordTap: (index: number) => void;
 }
 
-export function SegmentWordCanvas({
-  activeMode,
-  anchorId,
-  annotations,
-  onWordTap,
-  onPauseTap,
-}: SegmentWordCanvasProps) {
+function getWordChipClass(word: DeliveryWord, selected: boolean) {
+  const base = 'min-h-[44px] rounded-xl px-3 py-2 text-sm leading-tight transition-all active:scale-95';
+  const ring = selected ? ' ring-2 ring-white ring-offset-1 ring-offset-[var(--background)]' : '';
+
+  if (word.sayAs) return `${base}${ring} border border-sky-500/60 bg-sky-900/40 text-sky-200`;
+  if (word.spell) return `${base}${ring} border border-teal-500/60 bg-teal-900/40 tracking-widest text-teal-200`;
+  if (word.stress) return `${base}${ring} border border-amber-500/60 bg-amber-900/40 font-semibold text-amber-200`;
+  return `${base}${ring} border border-[var(--border)] bg-[var(--surface)] font-medium text-[var(--foreground)]`;
+}
+
+export function SegmentWordCanvas({ words, selectedIndex, onWordTap }: SegmentWordCanvasProps) {
   return (
-    <div className={`flex flex-wrap gap-1.5 px-3 py-3 ${activeMode ? 'cursor-pointer' : ''}`}>
-      {annotations.map((annotation) => (
-        <span key={annotation.id} className="contents">
+    <div className="flex flex-wrap gap-1.5 px-4 py-3">
+      {words.map((word, index) => (
+        <span key={index} className="contents">
           <button
-            onClick={() => onWordTap(annotation)}
-            disabled={!activeMode}
-            className={
-              getWordChipClass(annotation, activeMode) +
-              (!activeMode ? ' cursor-default' : '') +
-              (annotation.id === anchorId
-                ? ' animate-pulse ring-2 ring-white ring-offset-1 ring-offset-[var(--background)]'
-                : '')
-            }
+            onClick={() => onWordTap(index)}
+            className={getWordChipClass(word, index === selectedIndex)}
+            aria-pressed={index === selectedIndex}
           >
-            {annotation.text}
+            <span className={word.stress && (word.sayAs || word.spell) ? 'font-semibold' : undefined}>
+              {word.text}
+            </span>
+            {word.sayAs ? (
+              <span className="block text-[10px] leading-tight text-sky-300/80">says “{word.sayAs}”</span>
+            ) : null}
           </button>
-          {annotation.pauseAfterMs !== null ? (
-            <button
-              onClick={() => onPauseTap(annotation.id)}
+          {word.pause ? (
+            <span
               className="mx-0.5 flex shrink-0 flex-col items-center justify-center"
               style={{ minWidth: 32, minHeight: 44 }}
-              aria-label={`${formatPauseLabel(annotation.pauseAfterMs)} pause - tap to remove`}
+              aria-label={`${PAUSE_PRESETS[word.pause].label} pause`}
             >
-              <div className="h-4 w-0.5 rounded-full bg-purple-500/70" />
+              <span className="h-4 w-0.5 rounded-full bg-purple-500/70" />
               <span className="mt-0.5 text-[9px] leading-none text-purple-400">
-                {formatPauseLabel(annotation.pauseAfterMs)}
+                {PAUSE_PRESETS[word.pause].label}
               </span>
-            </button>
+            </span>
           ) : null}
         </span>
       ))}

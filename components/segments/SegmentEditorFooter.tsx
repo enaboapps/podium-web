@@ -2,10 +2,12 @@
 
 import { TTSConfig } from '@/lib/tts';
 
+export type PlayState = 'idle' | 'loading' | 'playing' | 'error';
+
 interface SegmentEditorFooterProps {
   dirty: boolean;
   playError: string | null;
-  playState: 'idle' | 'loading' | 'playing' | 'error';
+  playState: PlayState;
   savedBriefly: boolean;
   saving: boolean;
   ttsConfig: TTSConfig | null;
@@ -54,7 +56,7 @@ export function SegmentEditorFooter({
 
       {!ttsConfig ? (
         <a href="/settings" className="text-xs text-[var(--primary)]">
-          Add Azure key
+          Set up a voice to test
         </a>
       ) : null}
 
