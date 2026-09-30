@@ -104,7 +104,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.hostname === CLERK_HOST) {
+  // Cache Clerk's scripts only. Its /v1/ API responses carry the live session,
+  // so serving them from cache can make Clerk think a signed-out user is signed in.
+  if (url.hostname === CLERK_HOST && url.pathname.startsWith('/npm/')) {
     event.respondWith(staleWhileRevalidate(request));
   }
 });

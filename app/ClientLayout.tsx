@@ -52,7 +52,7 @@ function AppRuntimeBoundary({ children }: { children: React.ReactNode }) {
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider signInFallbackRedirectUrl="/library" signUpFallbackRedirectUrl="/library">
       <OfflineBootProvider>
         <ConvexClerkProvider>
           <OnlineRuntimeReady>
