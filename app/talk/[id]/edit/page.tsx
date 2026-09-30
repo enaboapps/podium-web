@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo, useCallback } from 'react';
+import { use, useState, useEffect, useMemo, useCallback, useRef, MouseEvent } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
@@ -8,11 +8,28 @@ import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
-import { buildAnnotations, tokenise, SegmentElement } from '@/lib/ssml';
-import { TTSConfig } from '@/lib/tts';
-import { SegmentBrickEditor } from '@/components/segments/SegmentBrickEditor';
+import { getSegmentWords, hasDelivery } from '@/lib/delivery';
+import { getTTSConfig } from '@/lib/tts';
+import { SegmentDeliveryEditor, SegmentDeliveryValue } from '@/components/segments/SegmentDeliveryEditor';
+import { Doc } from '@/convex/_generated/dataModel';
 
 type SegmentMode = 'paragraphs' | 'sentences';
+type StoredSegment = Doc<'talks'>['segments'][number];
+
+/**
+ * Re-segment the talk text, keeping the id and delivery presets of any segment
+ * whose text is unchanged. New segments get fresh ids so presets can never be
+ * attached to the wrong segment by position.
+ */
+function buildSegmentsForSave(texts: string[], previous: StoredSegment[]): StoredSegment[] {
+  const unused = [...previous];
+  return texts.map((text) => {
+    const matchIndex = unused.findIndex((segment) => segment.text === text);
+    if (matchIndex === -1) return { id: crypto.randomUUID(), text };
+    const [match] = unused.splice(matchIndex, 1);
+    return match;
+  });
+}
 
 export default function EditPage({ params }: { params: Promise<{ id: string }> }) {
   return (
@@ -32,7 +49,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const talk = useQuery(api.talks.get, { id: id as Id<'talks'> });
   const saveEditedText = useMutation(api.talks.saveEditedText);
   const settings = useQuery(api.users.getSettings, clerkId ? { clerkId } : 'skip');
-  const saveSegmentElementsMutation = useMutation(api.talks.saveSegmentElements);
+  const saveSegmentDeliveryMutation = useMutation(api.talks.saveSegmentDelivery);
 
   const [fullText, setFullText] = useState('');
   const [mode, setMode] = useState<SegmentMode>('paragraphs');
@@ -43,6 +60,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [brickSegmentId, setBrickSegmentId] = useState<string | null>(null);
   const [brickEditorDirty, setBrickEditorDirty] = useState(false);
   const [brickClosePending, setBrickClosePending] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const discardingRef = useRef(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -62,13 +81,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     return mode === 'sentences' ? splitIntoSentences(paragraphs) : paragraphs;
   }, [paragraphs, mode]);
 
-  const isAzure = settings?.provider === 'azure';
-
-  const ttsConfig: TTSConfig | null =
-    settings && isAzure && settings.azureSubscriptionKey && settings.azureRegion
-      ? { provider: 'azure', subscriptionKey: settings.azureSubscriptionKey,
-          region: settings.azureRegion, voiceId: settings.azureVoiceId }
-      : null;
+  const ttsConfig = useMemo(() => getTTSConfig(settings), [settings]);
 
   const brickSegment = talk?.segments.find((s) => s.id === brickSegmentId) ?? null;
   const brickSegmentIndex = brickSegment ? talk!.segments.indexOf(brickSegment) : -1;
@@ -77,6 +90,24 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     setBrickEditorDirty(false);
     setBrickClosePending(false);
   }, [brickSegmentId]);
+
+  const hasUnsavedChanges = dirty || brickEditorDirty;
+
+  // Warn before a reload, tab close or external navigation drops unsaved work.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!discardingRef.current) event.preventDefault();
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  function guardLeave(event: MouseEvent<HTMLAnchorElement>) {
+    if (!dirty) return;
+    event.preventDefault();
+    setLeaveTarget(event.currentTarget.getAttribute('href'));
+  }
 
   function handleBrickClose() {
     if (brickEditorDirty) {
@@ -91,25 +122,30 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const handleBrickSave = useCallback(
-    async (segmentId: string, elements: SegmentElement[]) => {
+    async (segmentId: string, value: SegmentDeliveryValue) => {
       if (!clerkId || !talk) return;
-      await saveSegmentElementsMutation({ id: id as Id<'talks'>, userId: clerkId, segmentId, elements });
+      await saveSegmentDeliveryMutation({ id: id as Id<'talks'>, userId: clerkId, segmentId, ...value });
       await invalidateTalkOfflineState({
         userId: clerkId,
         talkId: id,
         title: talk.title ?? 'Untitled',
-        segments: talk.segments.map((s) => s.id === segmentId ? { ...s, elements } : s),
+        segments: talk.segments.map((s) => {
+          if (s.id !== segmentId) return s;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { elements, ...rest } = s;
+          return { ...rest, ...value };
+        }),
       });
     },
-    [clerkId, id, saveSegmentElementsMutation, talk]
+    [clerkId, id, saveSegmentDeliveryMutation, talk]
   );
 
   async function handleSave() {
-    if (!clerkId || !dirty) return;
+    if (!clerkId || !dirty || !talk) return;
     setSaving(true);
     setSaveError(false);
     try {
-      const segments = previewSegments.map((text, i) => ({ id: String(i), text }));
+      const segments = buildSegmentsForSave(previewSegments, talk.segments);
       await saveEditedText({
         id: id as Id<'talks'>,
         userId: clerkId,
@@ -144,11 +180,30 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     <>
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
+      {leaveTarget ? (
+        <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
+          <button onClick={() => setLeaveTarget(null)} className="text-sm text-[var(--muted)]">Cancel</button>
+          <span className="text-sm font-semibold text-[var(--foreground)]">Discard changes?</span>
+          <a
+            href={leaveTarget}
+            onClick={() => { discardingRef.current = true; }}
+            className="text-sm font-semibold text-red-400"
+          >
+            Discard
+          </a>
+        </header>
+      ) : (
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
-        <a href={`/talk/${id}`} className="text-sm text-[var(--muted)]">← Back</a>
+        <a
+          href={`/talk/${id}`}
+          onClick={guardLeave}
+          className="text-sm text-[var(--muted)]"
+        >
+          ← Back
+        </a>
         <span className="text-sm font-semibold truncate mx-4 flex-1 text-center">{talk?.title}</span>
         <div className="flex items-center gap-3">
-          <a href={`/talk/${id}/history`} className="text-xs text-[var(--muted)]">History</a>
+          <a href={`/talk/${id}/history`} onClick={guardLeave} className="text-xs text-[var(--muted)]">History</a>
           <button
             onClick={handleSave}
             disabled={!dirty || saving}
@@ -158,6 +213,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           </button>
         </div>
       </header>
+      )}
 
       {/* Mode + segment count */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)] shrink-0">
@@ -192,13 +248,13 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         <div className="px-5 py-2 flex items-center justify-between">
           <span className="text-xs text-[var(--muted)] font-medium uppercase tracking-wide">Preview</span>
           <span className="text-xs text-[var(--muted)]">
-            {dirty ? 'Save to edit segments' : 'Tap a segment to add emphasis, pauses and more'}
+            {dirty ? 'Save to edit segments. Unchanged segments keep their styling.' : 'Tap a segment to set its mood, pauses and more'}
           </span>
         </div>
         <div className="overflow-x-auto flex gap-2 px-5 pb-4">
           {previewSegments.slice(0, 20).map((text, i) => {
             const storedSegment = talk?.segments[i];
-            const hasElements = (storedSegment?.elements?.length ?? 0) > 0;
+            const hasElements = !!storedSegment && hasDelivery(storedSegment);
             const isClickable = !dirty && !!talk;
             return (
               <div
@@ -240,14 +296,11 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
             <div className="w-16" />
           </header>
         )}
-        <SegmentBrickEditor
+        <SegmentDeliveryEditor
           key={brickSegment.id}
-          initialAnnotations={
-            (brickSegment.elements as SegmentElement[] | undefined)?.length
-              ? buildAnnotations(brickSegment.elements as SegmentElement[])
-              : tokenise(brickSegment.text)
-          }
+          initialValue={{ words: getSegmentWords(brickSegment), mood: brickSegment.mood, pace: brickSegment.pace }}
           segmentId={brickSegment.id}
+          segmentText={brickSegment.text}
           ttsConfig={ttsConfig}
           onDirtyChange={setBrickEditorDirty}
           onSave={handleBrickSave}
