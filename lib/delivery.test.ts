@@ -111,7 +111,7 @@ describe("Azure rendering", () => {
   it("avoids prosody and emphasis on HD voices", () => {
     const words = [{ text: "really", stress: true, pause: "medium" as const }, { text: "good" }];
     expect(renderSegment({ text: "really good", mood: "excited", pace: "faster", words }, hd).input).toBe(
-      '<speak>[excited] REALLY <break time="1000ms"/> good</speak>',
+      '<speak>[excited] REALLY <break time="1000ms"/> [excited] good</speak>',
     );
     expect(renderSegment({ text: "really good", mood: "whisper", words }, omni).input).toBe(
       '<speak><mstts:express-as style="quiet">REALLY ... good</mstts:express-as></speak>',
@@ -144,8 +144,15 @@ describe("ElevenLabs rendering", () => {
 
   it("uses audio tags on v3/v4", () => {
     expect(renderSegment(segment, v4)).toEqual({
-      input: "[sadly] HELLO [long pause] N. A. S. A., shiv-awn",
+      input: "[sadly] HELLO [long pause] [sadly] N. A. S. A., shiv-awn",
       speed: 0.85,
     });
+  });
+
+  it("does not restate the mood after a pause on the last word", () => {
+    const words = [{ text: "Hello" }, { text: "there.", pause: "short" as const }];
+    expect(renderSegment({ text: "Hello there.", mood: "calm", words }, v4).input).toBe(
+      "[calmly] Hello there. ...",
+    );
   });
 });

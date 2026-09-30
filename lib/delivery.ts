@@ -322,28 +322,34 @@ function renderAzureNeural(words: DeliveryWord[], segment: DeliverySegment, nati
 }
 
 function renderAzureHD(words: DeliveryWord[], segment: DeliverySegment, omni: boolean) {
+  const preset = segment.mood ? MOOD_PRESETS[segment.mood] : null;
+  // DragonHD style markers are inline like ElevenLabs tags, so restate after pauses.
+  const styleMarker = preset && !omni ? `[${preset.hdStyle}]` : null;
+
   // HD voices ignore prosody and emphasis: stress falls back to capitals.
-  let body = words.map((word) => {
+  let body = words.map((word, index) => {
     let part = azureWordContent(word, true);
     if (word.pause) {
       part += omni
         ? (word.pause === 'long' ? ' ... ...' : ' ...')
         : ` <break time="${PAUSE_PRESETS[word.pause].ms}ms"/>`;
+      if (styleMarker && index < words.length - 1) part += ` ${styleMarker}`;
     }
     return part;
   }).join(' ');
 
-  if (segment.mood) {
-    const preset = MOOD_PRESETS[segment.mood];
+  if (preset) {
     body = omni
       ? `<mstts:express-as style="${preset.omniStyle}">${body}</mstts:express-as>`
-      : `[${preset.hdStyle}] ${body}`;
+      : `${styleMarker} ${body}`;
   }
   return body;
 }
 
 function renderElevenLabs(words: DeliveryWord[], segment: DeliverySegment, expressive: boolean): RenderedSpeech {
-  const parts = words.map((word) => {
+  const moodTag = expressive && segment.mood ? MOOD_PRESETS[segment.mood].elevenTag : null;
+
+  const parts = words.map((word, index) => {
     const { prefix, core, suffix } = splitPunctuation(word.text);
     let spoken = core;
     let tail = suffix;
@@ -360,6 +366,8 @@ function renderElevenLabs(words: DeliveryWord[], segment: DeliverySegment, expre
     if (word.pause) {
       if (expressive) {
         part += word.pause === 'short' ? ' ...' : word.pause === 'medium' ? ' [pause]' : ' [long pause]';
+        // A mood tag stops applying after a pause, so restate it for the words that follow.
+        if (moodTag && index < words.length - 1) part += ` ${moodTag}`;
       } else {
         part += ` <break time="${(PAUSE_PRESETS[word.pause].ms / 1000).toFixed(1)}s" />`;
       }
@@ -368,7 +376,7 @@ function renderElevenLabs(words: DeliveryWord[], segment: DeliverySegment, expre
   });
 
   let input = parts.join(' ');
-  if (expressive && segment.mood) input = `${MOOD_PRESETS[segment.mood].elevenTag} ${input}`;
+  if (moodTag) input = `${moodTag} ${input}`;
 
   return {
     input,

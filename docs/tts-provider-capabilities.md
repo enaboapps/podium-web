@@ -83,7 +83,7 @@ HD voices sound more natural and pick emotion from the meaning of the text autom
 | Volume | — | ❌ | ❌ via settings; `[whispers]`, `[shouts]` tags approximate it | |
 | Pause | `<break time="1.5s"/>` | ✅ ≤3 s | ❌ **not supported** | Too many breaks → instability/speed artefacts. v3/v4: use `[pause]`, `[long pause]`, `…`, `—` |
 | Emphasis | CAPITALS, punctuation | ✅ (approximate) | ✅ (better) | e.g. "This is VERY important." No emphasis tag exists |
-| Emotion / delivery | Audio tags `[…]` | ❌ (stripped/spoken) | ✅ | Free text: `[whispers]`, `[excited]`, `[sad]`, `[sarcastic]`, `[calmly]`, `[laughs]`, `[sighs]`, even `[dry, quietly pleased]`. Applies from the tag onwards, not to a precise word range |
+| Emotion / delivery | Audio tags `[…]` | ❌ (stripped/spoken) | ✅ | Free text: `[whispers]`, `[excited]`, `[sad]`, `[sarcastic]`, `[calmly]`, `[laughs]`, `[sighs]`, even `[dry, quietly pleased]`. Applies from the tag onwards, not to a precise word range. In our tests on v4, a `[pause]` / `[long pause]` tag ended the mood, so Podium restates the mood tag after each pause |
 | Expressiveness | `voice_settings.stability` (0–1, default 0.5), `style` (0–1), `similarity_boost` | ✅ | ✅ (v3 uses Creative / Natural / Robust stability modes) | Whole-request only. Lower stability = more emotional range, less consistent |
 | Spell out | Write it spaced: "N. A. S. A." | ✅ | ✅ | No say-as tag; text transform works everywhere |
 | Say this instead | Replace the text, or pronunciation-dictionary `alias` | ✅ | ✅ (alias via text) | Dictionary: up to 3 per request, `.pls`/`.txt`, case-sensitive |
