@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo, useCallback } from 'react';
+import { use, useState, useEffect, useMemo, useCallback, useRef, MouseEvent } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
@@ -60,6 +60,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [brickSegmentId, setBrickSegmentId] = useState<string | null>(null);
   const [brickEditorDirty, setBrickEditorDirty] = useState(false);
   const [brickClosePending, setBrickClosePending] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const discardingRef = useRef(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -88,6 +90,24 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     setBrickEditorDirty(false);
     setBrickClosePending(false);
   }, [brickSegmentId]);
+
+  const hasUnsavedChanges = dirty || brickEditorDirty;
+
+  // Warn before a reload, tab close or external navigation drops unsaved work.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!discardingRef.current) event.preventDefault();
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  function guardLeave(event: MouseEvent<HTMLAnchorElement>) {
+    if (!dirty) return;
+    event.preventDefault();
+    setLeaveTarget(event.currentTarget.getAttribute('href'));
+  }
 
   function handleBrickClose() {
     if (brickEditorDirty) {
@@ -160,11 +180,30 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     <>
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
+      {leaveTarget ? (
+        <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
+          <button onClick={() => setLeaveTarget(null)} className="text-sm text-[var(--muted)]">Cancel</button>
+          <span className="text-sm font-semibold text-[var(--foreground)]">Discard changes?</span>
+          <a
+            href={leaveTarget}
+            onClick={() => { discardingRef.current = true; }}
+            className="text-sm font-semibold text-red-400"
+          >
+            Discard
+          </a>
+        </header>
+      ) : (
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
-        <a href={`/talk/${id}`} className="text-sm text-[var(--muted)]">← Back</a>
+        <a
+          href={`/talk/${id}`}
+          onClick={guardLeave}
+          className="text-sm text-[var(--muted)]"
+        >
+          ← Back
+        </a>
         <span className="text-sm font-semibold truncate mx-4 flex-1 text-center">{talk?.title}</span>
         <div className="flex items-center gap-3">
-          <a href={`/talk/${id}/history`} className="text-xs text-[var(--muted)]">History</a>
+          <a href={`/talk/${id}/history`} onClick={guardLeave} className="text-xs text-[var(--muted)]">History</a>
           <button
             onClick={handleSave}
             disabled={!dirty || saving}
@@ -174,6 +213,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           </button>
         </div>
       </header>
+      )}
 
       {/* Mode + segment count */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)] shrink-0">
