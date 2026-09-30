@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
   DeliveryWord,
   getCapabilities,
   getCapabilityNotes,
+  isStyledWord,
   Mood,
   normaliseWord,
   Pace,
@@ -42,6 +44,7 @@ export function SegmentDeliveryEditor({
   const [mood, setMood] = useState(initialValue.mood);
   const [pace, setPace] = useState(initialValue.pace);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [wordsOpen, setWordsOpen] = useState(() => initialValue.words.some(isStyledWord));
   const [playState, setPlayState] = useState<PlayState>('idle');
   const [playError, setPlayError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -147,7 +150,13 @@ export function SegmentDeliveryEditor({
     }
   }
 
+  function toggleWords() {
+    setWordsOpen((open) => !open);
+    setSelectedIndex(null);
+  }
+
   const selectedWord = selectedIndex !== null ? words[selectedIndex] : null;
+  const styledCount = words.filter(isStyledWord).length;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -163,16 +172,38 @@ export function SegmentDeliveryEditor({
           onPaceChange={handlePaceChange}
         />
 
-        <section className="pt-4">
-          <h2 className="px-4 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Words</h2>
-          <p className="px-4 pt-1 text-xs text-[var(--muted)]">
-            Tap a word to add a pause, stress it, spell it out or change how it’s said.
-          </p>
-          <SegmentWordCanvas
-            words={words}
-            selectedIndex={selectedIndex}
-            onWordTap={(index) => setSelectedIndex((previous) => (previous === index ? null : index))}
-          />
+        <section>
+          <button
+            onClick={toggleWords}
+            aria-expanded={wordsOpen}
+            aria-controls="segment-words"
+            className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left"
+          >
+            <span className="flex-1">
+              <span className="block text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Words</span>
+              <span className="block pt-0.5 text-sm text-[var(--foreground)]">
+                {styledCount > 0
+                  ? `${styledCount} ${styledCount === 1 ? 'word' : 'words'} changed`
+                  : 'Pauses, stress and spelling for single words'}
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-5 w-5 shrink-0 text-[var(--muted)] transition-transform ${wordsOpen ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
+          {wordsOpen ? (
+            <div id="segment-words">
+              <p className="px-4 text-xs text-[var(--muted)]">
+                Tap a word to add a pause, stress it, spell it out or change how it’s said.
+              </p>
+              <SegmentWordCanvas
+                words={words}
+                selectedIndex={selectedIndex}
+                onWordTap={(index) => setSelectedIndex((previous) => (previous === index ? null : index))}
+              />
+            </div>
+          ) : null}
         </section>
       </div>
 
