@@ -1,4 +1,5 @@
 import { checkConnection } from "./provider-connection";
+import { normaliseSpeechBlob } from "./loudness";
 import { AzureTTSClient } from "js-tts-wrapper/browser";
 import {
   DEFAULT_ELEVENLABS_MODEL,
@@ -128,9 +129,10 @@ export async function fetchTTSBlob(
   text: string,
   config: TTSConfig,
 ): Promise<Blob> {
-  return config.provider === "azure"
-    ? fetchAzureBlob(text, config)
-    : fetchElevenLabsBlob(text, config);
+  const blob = config.provider === "azure"
+    ? await fetchAzureBlob(text, config)
+    : await fetchElevenLabsBlob(text, config);
+  return normaliseSpeechBlob(blob);
 }
 
 /** Synthesize a talk segment with its mood, pace and word presets applied. */
@@ -139,9 +141,10 @@ export async function fetchSegmentBlob(
   config: TTSConfig,
 ): Promise<Blob> {
   const { input, speed } = renderSegment(segment, getSpeechTarget(config));
-  return config.provider === "azure"
-    ? fetchAzureBlob(input, config, true)
-    : fetchElevenLabsBlob(input, config, speed);
+  const blob = config.provider === "azure"
+    ? await fetchAzureBlob(input, config, true)
+    : await fetchElevenLabsBlob(input, config, speed);
+  return normaliseSpeechBlob(blob);
 }
 
 export async function fetchVoices(config: TTSConfig): Promise<TTSVoice[]> {

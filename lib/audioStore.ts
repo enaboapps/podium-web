@@ -1,10 +1,16 @@
 import { createStore, del, get, keys, set } from 'idb-keyval';
 import { DeliverySegment, getSegmentAudioIdentity } from '@/lib/delivery';
+import { isNormalisedAudio, normaliseSpeechBlob } from '@/lib/loudness';
 
 export type CachedSegment = DeliverySegment & { id: string };
 
+/** Cached speech, normalised for loudness. Audio cached before normalisation is converted once and saved back. */
 export async function getCachedAudio(key: string): Promise<Blob | undefined> {
-  return get<Blob>(key);
+  const blob = await get<Blob>(key);
+  if (!blob || isNormalisedAudio(blob)) return blob;
+  const normalised = await normaliseSpeechBlob(blob);
+  if (isNormalisedAudio(normalised)) await set(key, normalised);
+  return normalised;
 }
 
 export async function setCachedAudio(key: string, blob: Blob): Promise<void> {
