@@ -1,8 +1,7 @@
 /**
  * Delivery presets: what the user wants a segment to sound like, stored as
  * intents and rendered per provider / voice family / model. See
- * "Podium - ElevenLabs vs Azure TTS capabilities" for the research behind the
- * mappings below.
+ * docs/tts-provider-capabilities.md for the research behind the mappings below.
  */
 import { SegmentElement } from '@/lib/ssml';
 
