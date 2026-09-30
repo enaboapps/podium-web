@@ -1,5 +1,6 @@
 'use client';
 
+import { Check, Loader2, Play, Settings, Square } from 'lucide-react';
 import { TTSConfig } from '@/lib/tts';
 
 export type PlayState = 'idle' | 'loading' | 'playing' | 'error';
@@ -15,17 +16,52 @@ interface SegmentEditorFooterProps {
   onTest: () => void;
 }
 
-function getTestLabel(playState: SegmentEditorFooterProps['playState'], playError: string | null) {
-  if (playState === 'loading') return 'Loading...';
-  if (playState === 'playing') return '[Stop]';
-  if (playState === 'error') return playError ?? 'Test failed';
-  return '[Play] Test';
+const buttonBase =
+  'flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-base font-semibold transition-all active:scale-[0.98] disabled:active:scale-100';
+
+function PlayButtonContent({ playState }: { playState: PlayState }) {
+  if (playState === 'loading') {
+    return (
+      <>
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+        Loading…
+      </>
+    );
+  }
+  if (playState === 'playing') {
+    return (
+      <>
+        <Square className="h-4 w-4 fill-current" aria-hidden />
+        Stop
+      </>
+    );
+  }
+  return (
+    <>
+      <Play className="h-5 w-5 fill-current" aria-hidden />
+      Listen
+    </>
+  );
 }
 
-function getSaveLabel(saving: boolean, savedBriefly: boolean) {
-  if (saving) return 'Saving...';
-  if (savedBriefly) return 'Saved';
-  return 'Save';
+function SaveButtonContent({ dirty, saving, savedBriefly }: { dirty: boolean; saving: boolean; savedBriefly: boolean }) {
+  if (saving) {
+    return (
+      <>
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+        Saving…
+      </>
+    );
+  }
+  if (savedBriefly || !dirty) {
+    return (
+      <>
+        <Check className="h-5 w-5" aria-hidden />
+        {savedBriefly ? 'Saved' : 'No changes'}
+      </>
+    );
+  }
+  return <>Save</>;
 }
 
 export function SegmentEditorFooter({
@@ -38,39 +74,55 @@ export function SegmentEditorFooter({
   onSave,
   onTest,
 }: SegmentEditorFooterProps) {
-  return (
-    <div className="flex items-center gap-4 border-t border-[var(--border)] px-4 py-3">
-      <button
-        onClick={onTest}
-        disabled={!ttsConfig || playState === 'loading'}
-        className={`text-sm font-medium transition-colors disabled:opacity-40 ${
-          playState === 'playing'
-            ? 'text-[var(--primary)]'
-            : playState === 'error'
-              ? 'text-red-400'
-              : 'text-[var(--muted)]'
-        }`}
-      >
-        {getTestLabel(playState, playError)}
-      </button>
+  const canSave = dirty && !saving;
 
-      {!ttsConfig ? (
-        <a href="/settings" className="text-xs text-[var(--primary)]">
-          Set up a voice to test
-        </a>
+  return (
+    <div
+      className="border-t border-[var(--border)] bg-[var(--background)] px-4 pt-4"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
+      {playState === 'error' ? (
+        <p role="alert" className="pb-3 text-center text-sm text-red-400">
+          {playError ?? 'Couldn’t play this segment. Try again.'}
+        </p>
       ) : null}
 
-      <div className="flex-1" />
+      <div className="flex gap-3">
+        {ttsConfig ? (
+          <button
+            onClick={onTest}
+            disabled={playState === 'loading'}
+            aria-label={playState === 'playing' ? 'Stop playback' : 'Listen to this segment'}
+            className={`${buttonBase} ${
+              playState === 'playing'
+                ? 'bg-[var(--primary)]/15 text-[var(--primary)] ring-2 ring-[var(--primary)]'
+                : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]'
+            } disabled:opacity-60`}
+          >
+            <PlayButtonContent playState={playState} />
+          </button>
+        ) : (
+          <a
+            href="/settings"
+            className={`${buttonBase} border border-dashed border-[var(--border)] text-sm text-[var(--primary)]`}
+          >
+            <Settings className="h-5 w-5" aria-hidden />
+            Set up a voice
+          </a>
+        )}
 
-      <button
-        onClick={onSave}
-        disabled={saving || !dirty}
-        className={`text-sm font-semibold transition-colors disabled:opacity-40 ${
-          savedBriefly ? 'text-[var(--muted)]' : 'text-[var(--primary)]'
-        }`}
-      >
-        {getSaveLabel(saving, savedBriefly)}
-      </button>
+        <button
+          onClick={onSave}
+          disabled={!canSave}
+          className={`${buttonBase} ${
+            canSave
+              ? 'bg-[var(--primary)] text-white'
+              : 'bg-[var(--surface)] text-[var(--muted)]'
+          }`}
+        >
+          <SaveButtonContent dirty={dirty} saving={saving} savedBriefly={savedBriefly} />
+        </button>
+      </div>
     </div>
   );
 }

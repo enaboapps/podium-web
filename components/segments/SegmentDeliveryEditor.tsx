@@ -121,16 +121,16 @@ export function SegmentDeliveryEditor({
       const message = error instanceof Error ? error.message : '';
       setPlayError(
         message.includes('401')
-          ? 'Key invalid'
+          ? 'Your voice key isn’t working. Check it in Settings.'
           : message.includes('429')
-            ? 'Quota reached'
-            : 'Test failed'
+            ? 'You’ve run out of voice credits for now.'
+            : 'Couldn’t play this segment. Try again.'
       );
       setPlayState('error');
       setTimeout(() => {
         setPlayState('idle');
         setPlayError(null);
-      }, 3000);
+      }, 6000);
     }
   }
 
