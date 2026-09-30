@@ -21,7 +21,7 @@ export const migrateVoiceIds = internalMutation({
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (ctx.db.patch as any)(user._id, {
-        [field]: (user as any)[field] ?? legacy,
+        [field]: user[field] ?? legacy,
         voiceId: undefined,
       });
 
