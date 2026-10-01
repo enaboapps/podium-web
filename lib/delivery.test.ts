@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAzureNeuralStyle,
   getAzureTarget,
   getCapabilities,
+  getCapabilityNotes,
+  getMoodSupport,
   getElevenLabsTarget,
   getLoudnessOffsetDb,
   getSegmentAudioIdentity,
@@ -110,8 +113,31 @@ describe("Azure rendering", () => {
       ava,
     );
     expect(input).toBe(
-      '<speak><mstts:express-as style="whispering"><prosody rate="-5%" volume="x-soft">The <break time="500ms"/> <say-as interpret-as="characters">BBC</say-as>. <sub alias="shiv-awn">Siobhan</sub></prosody></mstts:express-as></speak>',
+      '<speak><mstts:express-as style="whispering"><prosody rate="-8%" volume="x-soft">The <break time="500ms"/> <say-as interpret-as="characters">BBC</say-as>. <sub alias="shiv-awn">Siobhan</sub></prosody></mstts:express-as></speak>',
     );
+  });
+
+  it("uses the voice's own style when it has one, without prosody", () => {
+    const jenny = getAzureTarget("en-US-JennyNeural", ["cheerful", "Excited", "whispering"]);
+    expect(renderSegment({ text: "Hi", mood: "excited" }, jenny).input).toBe(
+      '<speak><mstts:express-as style="excited">Hi</mstts:express-as></speak>',
+    );
+  });
+
+  it("picks the closest style the voice has", () => {
+    const sonia = getAzureTarget("en-GB-SoniaNeural", ["cheerful", "sad"]);
+    expect(getAzureNeuralStyle(sonia, "excited")).toBe("cheerful");
+    expect(getMoodSupport(sonia, "excited")).toBe("yes");
+    expect(getMoodSupport(sonia, "calm")).toBe("approx");
+  });
+
+  it("falls back to prosody on voices without styles, and says so", () => {
+    const annette = getAzureTarget("en-AU-AnnetteNeural", []);
+    expect(renderSegment({ text: "Hi", mood: "sad" }, annette).input).toBe(
+      '<speak><prosody rate="-15%" pitch="-12%">Hi</prosody></speak>',
+    );
+    expect(getCapabilities(annette).mood).toBe("approx");
+    expect(getCapabilityNotes(annette).mood).toMatch(/no speaking styles/);
   });
 
   it("avoids prosody and emphasis on HD voices", () => {

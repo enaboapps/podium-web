@@ -9,6 +9,8 @@ interface DeliveryPresetPickerProps {
   paceSupport: Support;
   moodNote?: string;
   paceNote?: string;
+  /** Moods this voice only approximates (marked ≈) */
+  approximateMoods?: Mood[];
   onMoodChange: (mood: Mood | undefined) => void;
   onPaceChange: (pace: Pace | undefined) => void;
 }
@@ -28,6 +30,7 @@ export function DeliveryPresetPicker({
   paceSupport,
   moodNote,
   paceNote,
+  approximateMoods = [],
   onMoodChange,
   onPaceChange,
 }: DeliveryPresetPickerProps) {
@@ -58,6 +61,12 @@ export function DeliveryPresetPicker({
               className={chipClass(mood === key)}
             >
               {MOOD_PRESETS[key].label}
+              {approximateMoods.includes(key) ? (
+                <>
+                  <span aria-hidden> ≈</span>
+                  <span className="sr-only"> (approximate)</span>
+                </>
+              ) : null}
             </button>
           ))}
         </div>

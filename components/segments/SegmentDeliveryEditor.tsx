@@ -6,12 +6,14 @@ import {
   DeliveryWord,
   getCapabilities,
   getCapabilityNotes,
+  getMoodSupport,
   isStyledWord,
   Mood,
+  MOODS,
   normaliseWord,
   Pace,
 } from '@/lib/delivery';
-import { fetchSegmentBlob, getSpeechTarget, TTSConfig } from '@/lib/tts';
+import { fetchSegmentBlob, getAzureVoiceStyles, getSpeechTarget, TTSConfig } from '@/lib/tts';
 import { DeliveryPresetPicker } from './DeliveryPresetPicker';
 import { PlayState, SegmentEditorFooter } from './SegmentEditorFooter';
 import { SegmentWordCanvas } from './SegmentWordCanvas';
@@ -52,9 +54,17 @@ export function SegmentDeliveryEditor({
   const [savedBriefly, setSavedBriefly] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const target = useMemo(() => (ttsConfig ? getSpeechTarget(ttsConfig) : null), [ttsConfig]);
+  const [azureStyles, setAzureStyles] = useState<string[] | undefined>();
+  useEffect(() => {
+    let cancelled = false;
+    if (ttsConfig) void getAzureVoiceStyles(ttsConfig).then((styles) => { if (!cancelled) setAzureStyles(styles); });
+    return () => { cancelled = true; };
+  }, [ttsConfig]);
+
+  const target = useMemo(() => (ttsConfig ? getSpeechTarget(ttsConfig, azureStyles) : null), [ttsConfig, azureStyles]);
   const capabilities = target ? getCapabilities(target) : null;
   const notes = target ? getCapabilityNotes(target) : {};
+  const approximateMoods = target ? MOODS.filter((key) => getMoodSupport(target, key) === 'approx') : [];
 
   useEffect(
     () => () => {
@@ -167,6 +177,7 @@ export function SegmentDeliveryEditor({
           moodSupport={capabilities?.mood ?? 'yes'}
           paceSupport={capabilities?.pace ?? 'yes'}
           moodNote={notes.mood}
+          approximateMoods={capabilities?.mood === 'yes' ? approximateMoods : []}
           paceNote={notes.pace}
           onMoodChange={handleMoodChange}
           onPaceChange={handlePaceChange}

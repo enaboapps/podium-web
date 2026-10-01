@@ -41,6 +41,8 @@ export interface TTSVoice {
   gender?: "Male" | "Female" | "Unknown";
   languageCodes: { bcp47: string; iso639_3: string; display: string }[];
   provider: string;
+  /** Azure speaking styles (empty if the voice has none) */
+  styles?: string[];
 }
 
 /** Build the active provider's TTS config from user settings, or null if it isn't connected. */
@@ -72,10 +74,36 @@ export function getVoiceKey(settings: TTSSettings) {
   return `elevenlabs:${settings.elevenLabsVoiceId ?? "default"}:${settings.elevenLabsModelId ?? DEFAULT_ELEVENLABS_MODEL}`;
 }
 
-export function getSpeechTarget(config: TTSConfig): SpeechTarget {
+/** Pass the voice's Azure styles (see getAzureVoiceStyles) for mood rendering. */
+export function getSpeechTarget(config: TTSConfig, azureStyles?: string[]): SpeechTarget {
   return config.provider === "azure"
-    ? getAzureTarget(config.voiceId ?? DEFAULT_AZURE_VOICE)
+    ? getAzureTarget(config.voiceId ?? DEFAULT_AZURE_VOICE, azureStyles)
     : getElevenLabsTarget(config.modelId ?? DEFAULT_ELEVENLABS_MODEL);
+}
+
+const azureStylesCache = new Map<string, Promise<Map<string, string[]>>>();
+
+/**
+ * The speaking styles of the configured Azure voice, from Azure's voice list
+ * (fetched once per region and key). Undefined if they can't be loaded, so
+ * rendering falls back to trying the style anyway.
+ */
+export async function getAzureVoiceStyles(config: TTSConfig): Promise<string[] | undefined> {
+  if (config.provider !== "azure") return undefined;
+  const cacheKey = `${config.region}:${config.subscriptionKey}`;
+  let voices = azureStylesCache.get(cacheKey);
+  if (!voices) {
+    voices = fetchVoices(config).then(
+      (list) => new Map(list.map((voice) => [voice.id.toLowerCase(), voice.styles ?? []])),
+    );
+    azureStylesCache.set(cacheKey, voices);
+    voices.catch(() => azureStylesCache.delete(cacheKey));
+  }
+  try {
+    return (await voices).get((config.voiceId ?? DEFAULT_AZURE_VOICE).toLowerCase());
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchAzureBlob(
@@ -141,7 +169,8 @@ export async function fetchSegmentBlob(
   segment: DeliverySegment,
   config: TTSConfig,
 ): Promise<Blob> {
-  const { input, speed } = renderSegment(segment, getSpeechTarget(config));
+  const styles = await getAzureVoiceStyles(config);
+  const { input, speed } = renderSegment(segment, getSpeechTarget(config, styles));
   const blob = config.provider === "azure"
     ? await fetchAzureBlob(input, config, true)
     : await fetchElevenLabsBlob(input, config, speed);
