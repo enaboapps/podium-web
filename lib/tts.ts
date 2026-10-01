@@ -6,6 +6,7 @@ import {
   type DeliverySegment,
   getAzureTarget,
   getElevenLabsTarget,
+  getLoudnessOffsetDb,
   renderSegment,
   type SpeechTarget,
 } from "./delivery";
@@ -144,7 +145,7 @@ export async function fetchSegmentBlob(
   const blob = config.provider === "azure"
     ? await fetchAzureBlob(input, config, true)
     : await fetchElevenLabsBlob(input, config, speed);
-  return normaliseSpeechBlob(blob);
+  return normaliseSpeechBlob(blob, getLoudnessOffsetDb(segment));
 }
 
 export async function fetchVoices(config: TTSConfig): Promise<TTSVoice[]> {

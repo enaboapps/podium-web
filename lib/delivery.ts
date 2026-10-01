@@ -153,6 +153,14 @@ export const PAUSE_PRESETS: Record<PauseLength, { label: string; ms: number }> =
 
 export const PAUSE_LENGTHS = Object.keys(PAUSE_PRESETS) as PauseLength[];
 
+/** Whispers stay this much quieter than normal speech after loudness normalisation. */
+const WHISPER_LOUDNESS_OFFSET_DB = -8;
+
+/** Loudness target offset for a segment, so normalisation doesn't undo a quiet mood. */
+export function getLoudnessOffsetDb(segment: DeliverySegment): number {
+  return segment.mood === 'whisper' ? WHISPER_LOUDNESS_OFFSET_DB : 0;
+}
+
 // ─── Reading stored segments ─────────────────────────────────────────────────
 
 export function tokeniseWords(text: string): DeliveryWord[] {

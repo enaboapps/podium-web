@@ -12,7 +12,7 @@ import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio, type CachedTalk } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
-import { getSegmentAudioIdentity } from '@/lib/delivery';
+import { getLoudnessOffsetDb, getSegmentAudioIdentity } from '@/lib/delivery';
 import { fetchSegmentBlob, getTTSConfig, getVoiceKey } from '@/lib/tts';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
@@ -149,7 +149,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
       const idbResults = await Promise.all(
         segments.map(async (segment, segmentIndex) => {
           const cacheKey = getSegmentAudioCacheKey(activeVoiceKey, id, segment);
-          return { segmentIndex, segment, cacheKey, blob: await getCachedAudio(cacheKey) };
+          return { segmentIndex, segment, cacheKey, blob: await getCachedAudio(cacheKey, getLoudnessOffsetDb(segment)) };
         })
       );
 
