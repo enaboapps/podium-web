@@ -8,10 +8,11 @@ import { OfflineGate } from '@/components/offline/OfflineGate';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
-import { getSegmentWords, hasDelivery } from '@/lib/delivery';
+import { getSegmentWords } from '@/lib/delivery';
 import { getTTSConfig } from '@/lib/tts';
 import { SegmentDeliveryEditor, SegmentDeliveryEditorHandle, SegmentDeliveryValue } from '@/components/segments/SegmentDeliveryEditor';
 import { UnsavedChangesBar } from '@/components/UnsavedChangesBar';
+import { SegmentBlockList } from '@/components/segments/SegmentBlockList';
 import { Doc } from '@/convex/_generated/dataModel';
 
 type SegmentMode = 'paragraphs' | 'sentences';
@@ -61,6 +62,11 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [brickEditorDirty, setBrickEditorDirty] = useState(false);
   const [brickClosePending, setBrickClosePending] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const [view, setView] = useState<'segments' | 'text'>('segments');
+  // The segment you came from (Edit on the play page) or last opened, highlighted in the list.
+  const [highlightSegmentId, setHighlightSegmentId] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLButtonElement>(null);
+  const scrolledToHighlightRef = useRef(false);
   const discardingRef = useRef(false);
   const segmentEditorRef = useRef<SegmentDeliveryEditorHandle>(null);
   const [brickSaving, setBrickSaving] = useState(false);
@@ -98,6 +104,17 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     setBrickEditorDirty(false);
     setBrickClosePending(false);
   }, [brickSegmentId]);
+
+  useEffect(() => {
+    setHighlightSegmentId(new URLSearchParams(window.location.search).get('segment'));
+  }, []);
+
+  // Bring the segment you came from into view once the list has rendered.
+  useEffect(() => {
+    if (scrolledToHighlightRef.current || !highlightRef.current) return;
+    scrolledToHighlightRef.current = true;
+    highlightRef.current.scrollIntoView({ block: 'center' });
+  });
 
   const hasUnsavedChanges = dirty || brickEditorDirty;
 
@@ -243,66 +260,75 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
       </header>
       )}
 
-      {/* Mode + segment count */}
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)] shrink-0">
+      {/* Split mode + view toggle */}
+      <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-[var(--border)] shrink-0">
         <span className="text-xs text-[var(--muted)]">Split by</span>
         {(['paragraphs', 'sentences'] as SegmentMode[]).map((m) => (
           <button
             key={m}
             onClick={() => { setMode(m); setSaved(false); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
+            aria-pressed={mode === m}
+            className={`min-h-9 px-3 rounded-lg text-xs font-medium capitalize transition-colors ${
               mode === m ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] text-[var(--muted)]'
             }`}
           >
             {m}
           </button>
         ))}
-        <span className="ml-auto text-xs text-[var(--muted)]">{previewSegments.length} segments</span>
+        <button
+          onClick={() => setView(view === 'segments' ? 'text' : 'segments')}
+          className="ml-auto min-h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)]"
+        >
+          {view === 'segments' ? 'Edit text' : 'Show segments'}
+        </button>
       </div>
 
-      {/* Full text editor */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <textarea
-          value={fullText}
-          onChange={(e) => { setFullText(e.target.value); setSaved(false); }}
-          className="flex-1 w-full bg-transparent px-5 py-4 text-base text-[var(--foreground)] resize-none outline-none leading-relaxed"
-          placeholder="Your speech text…"
-          spellCheck
-        />
-      </div>
-
-      {/* Segment preview strip */}
-      <div className="border-t border-[var(--border)] shrink-0">
-        <div className="px-5 py-2 flex items-center justify-between">
-          <span className="text-xs text-[var(--muted)] font-medium uppercase tracking-wide">Preview</span>
-          <span className="text-xs text-[var(--muted)]">
-            {dirty ? 'Save to edit segments. Unchanged segments keep their styling.' : 'Tap a segment to set its mood, pauses and more'}
-          </span>
+      {view === 'text' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <textarea
+            value={fullText}
+            onChange={(e) => { setFullText(e.target.value); setSaved(false); }}
+            className="flex-1 w-full bg-transparent px-5 py-4 text-base text-[var(--foreground)] resize-none outline-none leading-relaxed"
+            placeholder="Your speech text…"
+            spellCheck
+            autoFocus
+          />
         </div>
-        <div className="overflow-x-auto flex gap-2 px-5 pb-4">
-          {/* Saved: show the stored segments, so each card opens exactly that segment.
-              Unsaved: show how the text will split, dimmed until it's saved. */}
-          {(dirty ? previewSegments : (talk?.segments ?? []).map((s) => s.text)).map((text, i) => {
-            const storedSegment = dirty ? undefined : talk?.segments[i];
-            const hasElements = !!storedSegment && hasDelivery(storedSegment);
-            return (
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {dirty ? (
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-5 py-3">
+              <p className="flex-1 text-sm text-[var(--foreground)]">
+                {mode !== savedMode && fullText === savedText
+                  ? `Save to split into ${mode}. Segments that don’t change keep their styling.`
+                  : 'Save your text changes to style these segments.'}
+              </p>
               <button
-                key={storedSegment?.id ?? i}
-                type="button"
-                disabled={!storedSegment}
-                onClick={() => { if (storedSegment) setBrickSegmentId(storedSegment.id); }}
-                className="relative shrink-0 w-52 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] text-left active:opacity-70 disabled:opacity-50 disabled:active:opacity-50"
+                onClick={handleSave}
+                disabled={saving}
+                className="min-h-11 shrink-0 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {hasElements && (
-                  <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
-                )}
-                <p className="text-xs text-[var(--muted)] mb-1">{i + 1}</p>
-                <p className="text-xs text-[var(--foreground)] leading-relaxed line-clamp-4">{text}</p>
+                {saving ? 'Saving…' : 'Save'}
               </button>
-            );
-          })}
+            </div>
+          ) : (
+            <p className="px-5 pt-4 text-xs text-[var(--muted)]">
+              Tap a {mode === 'sentences' ? 'sentence' : 'paragraph'} to set its mood, pace and pauses.
+            </p>
+          )}
+
+          <SegmentBlockList
+            texts={dirty ? previewSegments : (talk?.segments ?? []).map((s) => s.text)}
+            segments={dirty ? undefined : talk?.segments}
+            highlightId={highlightSegmentId}
+            highlightRef={highlightRef}
+            onOpen={(segmentId) => {
+              setHighlightSegmentId(segmentId);
+              setBrickSegmentId(segmentId);
+            }}
+          />
         </div>
-      </div>
+      )}
     </div>
 
     {brickSegment && (
