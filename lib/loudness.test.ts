@@ -44,6 +44,10 @@ describe("getNormalisationGainDb", () => {
     expect(getNormalisationGainDb(TARGET_LOUDNESS_DB + 4)).toBeCloseTo(-4);
   });
 
+  it("shifts the target by an offset", () => {
+    expect(getNormalisationGainDb(TARGET_LOUDNESS_DB, -8)).toBeCloseTo(-8);
+  });
+
   it("limits extreme changes and leaves silence alone", () => {
     expect(getNormalisationGainDb(-80)).toBe(15);
     expect(getNormalisationGainDb(0)).toBe(-10);

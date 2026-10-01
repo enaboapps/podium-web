@@ -3,6 +3,7 @@ import {
   getAzureTarget,
   getCapabilities,
   getElevenLabsTarget,
+  getLoudnessOffsetDb,
   getSegmentAudioIdentity,
   getSegmentWords,
   normaliseWord,
@@ -66,6 +67,11 @@ describe("reading segments", () => {
   it("keeps plain segments' cache identity as their text", () => {
     expect(getSegmentAudioIdentity({ text: "Hi there", words: [{ text: "Hi" }, { text: "there" }] })).toBe("Hi there");
     expect(getSegmentAudioIdentity({ text: "Hi", mood: "calm" })).toMatch(/^delivery:/);
+  });
+
+  it("keeps whispers quieter after loudness normalisation", () => {
+    expect(getLoudnessOffsetDb({ text: "hi", mood: "whisper" })).toBeLessThan(0);
+    expect(getLoudnessOffsetDb({ text: "hi", mood: "calm" })).toBe(0);
   });
 
   it("normalises words", () => {

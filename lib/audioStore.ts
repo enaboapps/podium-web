@@ -4,11 +4,14 @@ import { isNormalisedAudio, normaliseSpeechBlob } from '@/lib/loudness';
 
 export type CachedSegment = DeliverySegment & { id: string };
 
-/** Cached speech, normalised for loudness. Audio cached before normalisation is converted once and saved back. */
-export async function getCachedAudio(key: string): Promise<Blob | undefined> {
+/**
+ * Cached speech, normalised for loudness. Audio cached before normalisation is
+ * converted once and saved back; pass the segment's loudness offset for that.
+ */
+export async function getCachedAudio(key: string, targetOffsetDb = 0): Promise<Blob | undefined> {
   const blob = await get<Blob>(key);
   if (!blob || isNormalisedAudio(blob)) return blob;
-  const normalised = await normaliseSpeechBlob(blob);
+  const normalised = await normaliseSpeechBlob(blob, targetOffsetDb);
   if (isNormalisedAudio(normalised)) await set(key, normalised);
   return normalised;
 }

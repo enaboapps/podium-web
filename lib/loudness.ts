@@ -54,10 +54,13 @@ export function measureLoudness(samples: Float32Array, sampleRate: number): numb
   return toDb(mean(gated));
 }
 
-/** Gain (dB) that brings `loudness` to the target, within safe limits. */
-export function getNormalisationGainDb(loudness: number): number {
+/**
+ * Gain (dB) that brings `loudness` to the target, within safe limits.
+ * `targetOffsetDb` shifts the target, e.g. to keep whispers quiet.
+ */
+export function getNormalisationGainDb(loudness: number, targetOffsetDb = 0): number {
   if (!Number.isFinite(loudness)) return 0;
-  return Math.min(MAX_GAIN_DB, Math.max(MAX_CUT_DB, TARGET_LOUDNESS_DB - loudness));
+  return Math.min(MAX_GAIN_DB, Math.max(MAX_CUT_DB, TARGET_LOUDNESS_DB + targetOffsetDb - loudness));
 }
 
 /**
@@ -142,12 +145,12 @@ async function decodeToMono(blob: Blob): Promise<Float32Array> {
  * if it's already normalised, or if decoding isn't possible, so speech never
  * breaks because of this step.
  */
-export async function normaliseSpeechBlob(blob: Blob): Promise<Blob> {
+export async function normaliseSpeechBlob(blob: Blob, targetOffsetDb = 0): Promise<Blob> {
   if (isNormalisedAudio(blob) || typeof OfflineAudioContext === 'undefined') return blob;
   try {
     const samples = await decodeToMono(blob);
     if (samples.length === 0) return blob;
-    const gainDb = getNormalisationGainDb(measureLoudness(samples, OUTPUT_SAMPLE_RATE));
+    const gainDb = getNormalisationGainDb(measureLoudness(samples, OUTPUT_SAMPLE_RATE), targetOffsetDb);
     const processed = applyGainWithLimiter(samples, OUTPUT_SAMPLE_RATE, gainDb);
     return new Blob([encodeWav(processed, OUTPUT_SAMPLE_RATE)], { type: NORMALISED_AUDIO_TYPE });
   } catch {

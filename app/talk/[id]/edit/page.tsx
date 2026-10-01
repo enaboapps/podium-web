@@ -55,7 +55,6 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [mode, setMode] = useState<SegmentMode>('paragraphs');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [brickSegmentId, setBrickSegmentId] = useState<string | null>(null);
   const [brickEditorDirty, setBrickEditorDirty] = useState(false);
@@ -82,6 +81,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   }, [paragraphs, mode]);
 
   const ttsConfig = useMemo(() => getTTSConfig(settings), [settings]);
+
+  // Unsaved means different from what's stored, so undoing an edit (or
+  // re-tapping the current split mode) doesn't leave the page stuck unsaved.
+  const savedText = talk ? talk.fullText ?? talk.segments.map((s) => s.text).join('\n\n') : '';
+  const savedMode: SegmentMode = talk?.segmentMode ?? 'paragraphs';
+  const dirty = !!talk && (fullText !== savedText || mode !== savedMode);
 
   const brickSegment = talk?.segments.find((s) => s.id === brickSegmentId) ?? null;
   const brickSegmentIndex = brickSegment ? talk!.segments.indexOf(brickSegment) : -1;
@@ -159,7 +164,6 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         title: talk?.title ?? 'Untitled',
         segments,
       });
-      setDirty(false);
       setSaved(true);
     } catch {
       setSaveError(true);
@@ -221,7 +225,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         {(['paragraphs', 'sentences'] as SegmentMode[]).map((m) => (
           <button
             key={m}
-            onClick={() => { setMode(m); setDirty(true); setSaved(false); }}
+            onClick={() => { setMode(m); setSaved(false); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
               mode === m ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] text-[var(--muted)]'
             }`}
@@ -236,7 +240,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         <textarea
           value={fullText}
-          onChange={(e) => { setFullText(e.target.value); setDirty(true); setSaved(false); }}
+          onChange={(e) => { setFullText(e.target.value); setSaved(false); }}
           className="flex-1 w-full bg-transparent px-5 py-4 text-base text-[var(--foreground)] resize-none outline-none leading-relaxed"
           placeholder="Your speech text…"
           spellCheck
@@ -252,31 +256,27 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           </span>
         </div>
         <div className="overflow-x-auto flex gap-2 px-5 pb-4">
-          {previewSegments.slice(0, 20).map((text, i) => {
-            const storedSegment = talk?.segments[i];
+          {/* Saved: show the stored segments, so each card opens exactly that segment.
+              Unsaved: show how the text will split, dimmed until it's saved. */}
+          {(dirty ? previewSegments : (talk?.segments ?? []).map((s) => s.text)).map((text, i) => {
+            const storedSegment = dirty ? undefined : talk?.segments[i];
             const hasElements = !!storedSegment && hasDelivery(storedSegment);
-            const isClickable = !dirty && !!talk;
             return (
-              <div
-                key={i}
-                onClick={() => { if (isClickable) setBrickSegmentId(storedSegment?.id ?? null); }}
-                className={`relative shrink-0 w-52 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] ${
-                  isClickable ? 'cursor-pointer active:opacity-70' : 'cursor-default'
-                }`}
+              <button
+                key={storedSegment?.id ?? i}
+                type="button"
+                disabled={!storedSegment}
+                onClick={() => { if (storedSegment) setBrickSegmentId(storedSegment.id); }}
+                className="relative shrink-0 w-52 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] text-left active:opacity-70 disabled:opacity-50 disabled:active:opacity-50"
               >
                 {hasElements && (
                   <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
                 )}
                 <p className="text-xs text-[var(--muted)] mb-1">{i + 1}</p>
                 <p className="text-xs text-[var(--foreground)] leading-relaxed line-clamp-4">{text}</p>
-              </div>
+              </button>
             );
           })}
-          {previewSegments.length > 20 && (
-            <div className="shrink-0 w-24 bg-[var(--surface)] rounded-xl px-3 py-2 border border-[var(--border)] flex items-center justify-center">
-              <p className="text-xs text-[var(--muted)]">+{previewSegments.length - 20} more</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
