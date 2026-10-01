@@ -10,7 +10,8 @@ import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
 import { getSegmentWords, hasDelivery } from '@/lib/delivery';
 import { getTTSConfig } from '@/lib/tts';
-import { SegmentDeliveryEditor, SegmentDeliveryValue } from '@/components/segments/SegmentDeliveryEditor';
+import { SegmentDeliveryEditor, SegmentDeliveryEditorHandle, SegmentDeliveryValue } from '@/components/segments/SegmentDeliveryEditor';
+import { UnsavedChangesBar } from '@/components/UnsavedChangesBar';
 import { Doc } from '@/convex/_generated/dataModel';
 
 type SegmentMode = 'paragraphs' | 'sentences';
@@ -61,6 +62,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const [brickClosePending, setBrickClosePending] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
   const discardingRef = useRef(false);
+  const segmentEditorRef = useRef<SegmentDeliveryEditorHandle>(null);
+  const [brickSaving, setBrickSaving] = useState(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -126,6 +129,28 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     setBrickSegmentId(null);
   }
 
+  async function saveBrickAndClose() {
+    setBrickSaving(true);
+    try {
+      await segmentEditorRef.current?.save();
+      setBrickSegmentId(null);
+    } catch {
+      // Stay in the editor so the unsaved presets aren't lost.
+      setBrickClosePending(false);
+    } finally {
+      setBrickSaving(false);
+    }
+  }
+
+  function leaveTo(href: string) {
+    discardingRef.current = true;
+    window.location.href = href;
+  }
+
+  async function saveAndLeave() {
+    if (leaveTarget && (await handleSave())) leaveTo(leaveTarget);
+  }
+
   const handleBrickSave = useCallback(
     async (segmentId: string, value: SegmentDeliveryValue) => {
       if (!clerkId || !talk) return;
@@ -145,8 +170,9 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     [clerkId, id, saveSegmentDeliveryMutation, talk]
   );
 
-  async function handleSave() {
-    if (!clerkId || !dirty || !talk) return;
+  /** Save the talk text; resolves true on success. */
+  async function handleSave(): Promise<boolean> {
+    if (!clerkId || !dirty || !talk) return false;
     setSaving(true);
     setSaveError(false);
     try {
@@ -165,8 +191,11 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
         segments,
       });
       setSaved(true);
+      return true;
     } catch {
       setSaveError(true);
+      setLeaveTarget(null);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -185,17 +214,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     <div className="flex flex-col min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
       {/* Header */}
       {leaveTarget ? (
-        <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
-          <button onClick={() => setLeaveTarget(null)} className="text-sm text-[var(--muted)]">Cancel</button>
-          <span className="text-sm font-semibold text-[var(--foreground)]">Discard changes?</span>
-          <a
-            href={leaveTarget}
-            onClick={() => { discardingRef.current = true; }}
-            className="text-sm font-semibold text-red-400"
-          >
-            Discard
-          </a>
-        </header>
+        <UnsavedChangesBar
+          saving={saving}
+          onKeepEditing={() => setLeaveTarget(null)}
+          onSaveAndLeave={saveAndLeave}
+          onDiscard={() => leaveTo(leaveTarget)}
+        />
       ) : (
       <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
         <a
@@ -284,11 +308,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     {brickSegment && (
       <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background)]">
         {brickClosePending ? (
-          <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
-            <button onClick={() => setBrickClosePending(false)} className="text-sm text-[var(--muted)]">Cancel</button>
-            <span className="text-sm font-semibold text-[var(--foreground)]">Discard changes?</span>
-            <button onClick={confirmBrickClose} className="text-sm font-semibold text-red-400">Discard</button>
-          </header>
+          <UnsavedChangesBar
+            saving={brickSaving}
+            onKeepEditing={() => setBrickClosePending(false)}
+            onSaveAndLeave={saveBrickAndClose}
+            onDiscard={confirmBrickClose}
+          />
         ) : (
           <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
             <button onClick={handleBrickClose} className="text-sm text-[var(--muted)]">← Back</button>
@@ -297,6 +322,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           </header>
         )}
         <SegmentDeliveryEditor
+          ref={segmentEditorRef}
           key={brickSegment.id}
           initialValue={{ words: getSegmentWords(brickSegment), mood: brickSegment.mood, pace: brickSegment.pace }}
           segmentId={brickSegment.id}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import {
   DeliveryWord,
@@ -25,7 +25,13 @@ export interface SegmentDeliveryValue {
   pace?: Pace;
 }
 
+export interface SegmentDeliveryEditorHandle {
+  /** Save the current presets; rejects if saving fails. */
+  save: () => Promise<void>;
+}
+
 interface SegmentDeliveryEditorProps {
+  ref?: Ref<SegmentDeliveryEditorHandle>;
   initialValue: SegmentDeliveryValue;
   segmentId: string;
   segmentText: string;
@@ -35,6 +41,7 @@ interface SegmentDeliveryEditorProps {
 }
 
 export function SegmentDeliveryEditor({
+  ref,
   initialValue,
   segmentId,
   segmentText,
@@ -164,6 +171,8 @@ export function SegmentDeliveryEditor({
     setWordsOpen((open) => !open);
     setSelectedIndex(null);
   }
+
+  useImperativeHandle(ref, () => ({ save: handleSave }));
 
   const selectedWord = selectedIndex !== null ? words[selectedIndex] : null;
   const styledCount = words.filter(isStyledWord).length;
