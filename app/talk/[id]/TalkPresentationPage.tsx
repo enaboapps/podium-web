@@ -500,7 +500,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
           {index + 1} / {segments.length}
         </span>
         <a
-          href={`/talk/${id}/edit`}
+          href={current ? `/talk/${id}/edit?segment=${encodeURIComponent(current.id)}` : `/talk/${id}/edit`}
           className={`text-xs w-12 text-right transition-colors ${isLocked ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}
         >
           Edit
