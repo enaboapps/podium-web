@@ -25,6 +25,11 @@ export interface SegmentDeliveryValue {
   pace?: Pace;
 }
 
+/** A tiny silent WAV, played inside a tap so iOS lets the same element play later. */
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+/** Wait this long after the last mood or pace change before generating, to avoid spending credits on every tap. */
+const AUTO_PLAY_DELAY_MS = 700;
+
 export interface SegmentDeliveryEditorHandle {
   /** Save the current presets; rejects if saving fails. */
   save: () => Promise<void>;
@@ -59,7 +64,12 @@ export function SegmentDeliveryEditor({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [savedBriefly, setSavedBriefly] = useState(false);
+  // One reused element: once unlocked by a tap, iOS lets it play after a network wait.
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  // Bumped on every play or stop, so results from replaced requests are ignored.
+  const playGenerationRef = useRef(0);
+  const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [azureStyles, setAzureStyles] = useState<string[] | undefined>();
   useEffect(() => {
@@ -75,11 +85,88 @@ export function SegmentDeliveryEditor({
 
   useEffect(
     () => () => {
+      playGenerationRef.current++;
+      if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
       audioRef.current?.pause();
-      audioRef.current = null;
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     },
     []
   );
+
+  function getAudio() {
+    audioRef.current ??= new Audio();
+    return audioRef.current;
+  }
+
+  /** Call inside a tap handler, before any await. */
+  function unlockAudio() {
+    const audio = getAudio();
+    if (audio.src) return;
+    audio.src = SILENT_WAV;
+    void audio.play().catch(() => {});
+  }
+
+  function stopPlayback() {
+    playGenerationRef.current++;
+    if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
+    autoPlayTimerRef.current = null;
+    audioRef.current?.pause();
+    setPlayState('idle');
+  }
+
+  async function playValue(value: SegmentDeliveryValue) {
+    if (!ttsConfig) return;
+    const generation = ++playGenerationRef.current;
+    const audio = getAudio();
+    audio.pause();
+    setPlayState('loading');
+    setPlayError(null);
+
+    try {
+      const blob = await fetchSegmentBlob({ text: segmentText, ...value }, ttsConfig);
+      if (generation !== playGenerationRef.current) return;
+
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = URL.createObjectURL(blob);
+      audio.src = audioUrlRef.current;
+      const finish = () => {
+        if (generation === playGenerationRef.current) setPlayState('idle');
+      };
+      audio.onended = finish;
+      audio.onerror = finish;
+
+      setPlayState('playing');
+      await audio.play();
+    } catch (error) {
+      if (generation !== playGenerationRef.current) return;
+      const message = error instanceof Error ? error.message : '';
+      setPlayError(
+        message.includes('401')
+          ? 'Your voice key isn’t working. Check it in Settings.'
+          : message.includes('429')
+            ? 'You’ve run out of voice credits for now.'
+            : 'Couldn’t play this segment. Try again.'
+      );
+      setPlayState('error');
+      setTimeout(() => {
+        if (generation !== playGenerationRef.current) return;
+        setPlayState('idle');
+        setPlayError(null);
+      }, 6000);
+    }
+  }
+
+  /** Stop what's playing and play the new version once the changes settle. */
+  function scheduleAutoPlay(value: SegmentDeliveryValue) {
+    if (!ttsConfig) return;
+    unlockAudio();
+    stopPlayback();
+    setPlayState('loading');
+    autoPlayTimerRef.current = setTimeout(() => {
+      autoPlayTimerRef.current = null;
+      void playValue(value);
+    }, AUTO_PLAY_DELAY_MS);
+  }
 
   function markDirty() {
     setDirty(true);
@@ -90,11 +177,13 @@ export function SegmentDeliveryEditor({
   function handleMoodChange(next: Mood | undefined) {
     setMood(next);
     markDirty();
+    scheduleAutoPlay({ ...currentValue(), mood: next });
   }
 
   function handlePaceChange(next: Pace | undefined) {
     setPace(next);
     markDirty();
+    scheduleAutoPlay({ ...currentValue(), pace: next });
   }
 
   function handleWordChange(next: DeliveryWord) {
@@ -107,51 +196,14 @@ export function SegmentDeliveryEditor({
     return { words: words.map(normaliseWord), mood, pace };
   }
 
-  async function handleTest() {
+  function handleTest() {
     if (!ttsConfig) return;
-
-    if (playState === 'playing') {
-      audioRef.current?.pause();
-      audioRef.current = null;
-      setPlayState('idle');
+    if (playState === 'playing' || playState === 'loading') {
+      stopPlayback();
       return;
     }
-
-    setPlayState('loading');
-    setPlayError(null);
-
-    try {
-      const blob = await fetchSegmentBlob({ text: segmentText, ...currentValue() }, ttsConfig);
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-
-      audioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setPlayState('idle');
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setPlayState('idle');
-      };
-
-      setPlayState('playing');
-      await audio.play();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      setPlayError(
-        message.includes('401')
-          ? 'Your voice key isn’t working. Check it in Settings.'
-          : message.includes('429')
-            ? 'You’ve run out of voice credits for now.'
-            : 'Couldn’t play this segment. Try again.'
-      );
-      setPlayState('error');
-      setTimeout(() => {
-        setPlayState('idle');
-        setPlayError(null);
-      }, 6000);
-    }
+    unlockAudio();
+    void playValue(currentValue());
   }
 
   async function handleSave() {
