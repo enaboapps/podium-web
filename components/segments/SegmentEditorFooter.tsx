@@ -91,8 +91,7 @@ export function SegmentEditorFooter({
         {ttsConfig ? (
           <button
             onClick={onTest}
-            disabled={playState === 'loading'}
-            aria-label={playState === 'playing' ? 'Stop playback' : 'Listen to this segment'}
+            aria-label={playState === 'playing' || playState === 'loading' ? 'Stop playback' : 'Listen to this segment'}
             className={`${buttonBase} ${
               playState === 'playing'
                 ? 'bg-[var(--primary)]/15 text-[var(--primary)] ring-2 ring-[var(--primary)]'
