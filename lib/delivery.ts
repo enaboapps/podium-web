@@ -43,13 +43,24 @@ export const ELEVENLABS_MODELS = [
 const AZURE_EMPHASIS_VOICES = new Set(['en-us-guyneural', 'en-us-davisneural', 'en-us-janeneural']);
 
 export type SpeechTarget =
-  | { provider: 'azure'; family: 'neural' | 'hd' | 'hd-omni'; nativeEmphasis: boolean }
+  | {
+      provider: 'azure';
+      family: 'neural' | 'hd' | 'hd-omni';
+      nativeEmphasis: boolean;
+      /** Speaking styles the voice supports (Azure's StyleList); undefined if not known yet. */
+      styles?: string[];
+    }
   | { provider: 'elevenlabs'; family: 'classic' | 'expressive' };
 
-export function getAzureTarget(voiceId: string): SpeechTarget {
+export function getAzureTarget(voiceId: string, styles?: string[]): SpeechTarget {
   const id = voiceId.toLowerCase();
   const family = id.includes('dragonhdomni') ? 'hd-omni' : id.includes('dragonhd') ? 'hd' : 'neural';
-  return { provider: 'azure', family, nativeEmphasis: AZURE_EMPHASIS_VOICES.has(id) };
+  return {
+    provider: 'azure',
+    family,
+    nativeEmphasis: AZURE_EMPHASIS_VOICES.has(id),
+    ...(styles && { styles: styles.map((style) => style.toLowerCase()) }),
+  };
 }
 
 export function getElevenLabsTarget(modelId: string): SpeechTarget {
@@ -75,8 +86,13 @@ export function getCapabilities(target: SpeechTarget): DeliveryCapabilities {
   }
   switch (target.family) {
     case 'neural':
-      // Styles are voice-specific; unsupported styles fall back to prosody
-      return { mood: 'approx', pace: 'yes', pause: 'yes', stress: target.nativeEmphasis ? 'yes' : 'approx' };
+      // Styles are voice-specific; moods without a matching style fall back to prosody
+      return {
+        mood: MOODS.some((mood) => getMoodSupport(target, mood) === 'yes') ? 'yes' : 'approx',
+        pace: 'yes',
+        pause: 'yes',
+        stress: target.nativeEmphasis ? 'yes' : 'approx',
+      };
     case 'hd':
       return { mood: 'approx', pace: 'no', pause: 'yes', stress: 'approx' };
     case 'hd-omni':
@@ -95,7 +111,7 @@ export function getCapabilityNotes(target: SpeechTarget): Partial<Record<keyof D
   switch (target.family) {
     case 'neural':
       return {
-        mood: 'Voices with their own speaking styles use them; others get a similar speed and pitch.',
+        ...getAzureNeuralMoodNote(target),
         ...(!target.nativeEmphasis && {
           stress: "Your voice doesn't support true emphasis, so stressed words are said a little slower and louder.",
         }),
@@ -105,6 +121,41 @@ export function getCapabilityNotes(target: SpeechTarget): Partial<Record<keyof D
     case 'hd-omni':
       return { pace: "HD voices can't change pace.", pause: 'HD Omni voices pause approximately.', stress: capitals };
   }
+}
+
+/** Per-mood support, so the picker can mark moods that are only approximated. */
+export function getMoodSupport(target: SpeechTarget, mood: Mood): Support {
+  if (target.provider === 'elevenlabs') return target.family === 'expressive' ? 'yes' : 'no';
+  if (target.family === 'hd-omni') return 'yes';
+  if (target.family === 'hd') return 'approx';
+  return getAzureNeuralStyle(target, mood) && target.styles ? 'yes' : 'approx';
+}
+
+/**
+ * The Azure Neural style to use for a mood: the first preferred style the voice
+ * has, null if it has none of them, or the main style if the voice's styles
+ * aren't known (Azure ignores styles a voice doesn't support).
+ */
+export function getAzureNeuralStyle(target: SpeechTarget, mood: Mood): string | null {
+  const preferred = MOOD_PRESETS[mood].neuralStyles;
+  if (target.provider !== 'azure' || !target.styles) return preferred[0];
+  return preferred.find((style) => target.styles!.includes(style)) ?? null;
+}
+
+function getAzureNeuralMoodNote(target: SpeechTarget): { mood?: string } {
+  if (target.provider !== 'azure' || !target.styles) {
+    return { mood: 'Voices with their own speaking styles use them; others get a similar speed and pitch.' };
+  }
+  const approximated = MOODS.filter((mood) => getMoodSupport(target, mood) === 'approx');
+  if (approximated.length === MOODS.length) {
+    return {
+      mood: 'This voice has no speaking styles, so moods only change its speed and pitch. Voices such as Jenny, Aria, Guy and Sara have real moods. You can change voice in Settings.',
+    };
+  }
+  if (approximated.length > 0) {
+    return { mood: 'Moods marked ≈ aren’t styles this voice has, so they only change its speed and pitch.' };
+  }
+  return {};
 }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
@@ -117,25 +168,25 @@ interface ProsodyHint {
 
 interface MoodPreset {
   label: string;
-  /** Azure Neural express-as style (ignored by voices without it) */
-  neuralStyle: string;
+  /** Azure Neural express-as styles, most fitting first; the first one the voice has is used */
+  neuralStyles: string[];
   /** Azure DragonHD style marker */
   hdStyle: string;
   /** Azure DragonHD Omni express-as style */
   omniStyle: string;
   /** ElevenLabs v3/v4 audio tag */
   elevenTag: string;
-  /** Azure Neural prosody fallback */
+  /** Azure Neural fallback for voices without a matching style */
   prosody: ProsodyHint;
 }
 
 export const MOOD_PRESETS: Record<Mood, MoodPreset> = {
-  calm: { label: 'Calm', neuralStyle: 'calm', hdStyle: 'calm', omniStyle: 'calm', elevenTag: '[calmly]', prosody: { rate: 0.95 } },
-  warm: { label: 'Warm', neuralStyle: 'friendly', hdStyle: 'encouraging', omniStyle: 'encouraging', elevenTag: '[warmly]', prosody: { pitch: '+3%' } },
-  excited: { label: 'Excited', neuralStyle: 'excited', hdStyle: 'excited', omniStyle: 'excited', elevenTag: '[excited]', prosody: { rate: 1.08, pitch: '+8%' } },
-  serious: { label: 'Serious', neuralStyle: 'serious', hdStyle: 'serious', omniStyle: 'serious', elevenTag: '[seriously]', prosody: { rate: 0.95, pitch: '-5%' } },
-  sad: { label: 'Sad', neuralStyle: 'sad', hdStyle: 'sad', omniStyle: 'sad', elevenTag: '[sadly]', prosody: { rate: 0.9, pitch: '-8%' } },
-  whisper: { label: 'Whisper', neuralStyle: 'whispering', hdStyle: 'whispering', omniStyle: 'quiet', elevenTag: '[whispers]', prosody: { rate: 0.95, volume: 'x-soft' } },
+  calm: { label: 'Calm', neuralStyles: ['calm', 'gentle', 'softvoice', 'comforting'], hdStyle: 'calm', omniStyle: 'calm', elevenTag: '[calmly]', prosody: { rate: 0.9, pitch: '-3%' } },
+  warm: { label: 'Warm', neuralStyles: ['friendly', 'affectionate', 'caringempathy', 'empathetic', 'friendlycheerful', 'encouraging', 'comforting'], hdStyle: 'encouraging', omniStyle: 'encouraging', elevenTag: '[warmly]', prosody: { rate: 0.95, pitch: '+6%' } },
+  excited: { label: 'Excited', neuralStyles: ['excited', 'joyful', 'cheerful', 'happy', 'friendlycheerful'], hdStyle: 'excited', omniStyle: 'excited', elevenTag: '[excited]', prosody: { rate: 1.12, pitch: '+12%' } },
+  serious: { label: 'Serious', neuralStyles: ['serious', 'strict', 'newscast-formal', 'newscast', 'determined'], hdStyle: 'serious', omniStyle: 'serious', elevenTag: '[seriously]', prosody: { rate: 0.92, pitch: '-8%' } },
+  sad: { label: 'Sad', neuralStyles: ['sad', 'depressed', 'saddisappointed', 'disappointed', 'regretful'], hdStyle: 'sad', omniStyle: 'sad', elevenTag: '[sadly]', prosody: { rate: 0.85, pitch: '-12%' } },
+  whisper: { label: 'Whisper', neuralStyles: ['whispering', 'softvoice'], hdStyle: 'whispering', omniStyle: 'quiet', elevenTag: '[whispers]', prosody: { rate: 0.92, volume: 'x-soft' } },
 };
 
 export const MOODS = Object.keys(MOOD_PRESETS) as Mood[];
@@ -289,8 +340,13 @@ function azureWordContent(word: DeliveryWord, capitalise: boolean) {
   return `${escapeXml(prefix)}${body}${escapeXml(suffix)}`;
 }
 
-function renderAzureNeural(words: DeliveryWord[], segment: DeliverySegment, nativeEmphasis: boolean) {
-  const moodHint = segment.mood ? MOOD_PRESETS[segment.mood].prosody : {};
+function renderAzureNeural(words: DeliveryWord[], segment: DeliverySegment, target: SpeechTarget) {
+  const nativeEmphasis = target.provider === 'azure' && target.nativeEmphasis;
+  const style = segment.mood ? getAzureNeuralStyle(target, segment.mood) : null;
+  // A real style carries the mood itself; prosody stands in when the voice
+  // lacks one, or when its styles aren't known and the style may be ignored.
+  const stylesKnown = target.provider === 'azure' && !!target.styles;
+  const moodHint = segment.mood && !(style && stylesKnown) ? MOOD_PRESETS[segment.mood].prosody : {};
   const paceRate = segment.pace ? PACE_PRESETS[segment.pace].rate : 1;
   const base: ProsodyHint = { ...moodHint, rate: (moodHint.rate ?? 1) * paceRate };
 
@@ -323,8 +379,8 @@ function renderAzureNeural(words: DeliveryWord[], segment: DeliverySegment, nati
     return content;
   }).join(' ');
 
-  if (segment.mood) {
-    body = `<mstts:express-as style="${MOOD_PRESETS[segment.mood].neuralStyle}">${body}</mstts:express-as>`;
+  if (style) {
+    body = `<mstts:express-as style="${style}">${body}</mstts:express-as>`;
   }
   return body;
 }
@@ -401,7 +457,7 @@ export function renderSegment(segment: DeliverySegment, target: SpeechTarget): R
   }
 
   const body = target.family === 'neural'
-    ? renderAzureNeural(words, segment, target.nativeEmphasis)
+    ? renderAzureNeural(words, segment, target)
     : renderAzureHD(words, segment, target.family === 'hd-omni');
   return { input: `<speak>${body}</speak>` };
 }

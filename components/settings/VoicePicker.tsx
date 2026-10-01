@@ -170,6 +170,7 @@ export function VoicePicker({
                 {filteredVoices.map((voice) => (
                   <option key={voice.id} value={voice.id}>
                     {voice.name}
+                    {voice.styles?.length ? " · moods" : ""}
                   </option>
                 ))}
               </select>

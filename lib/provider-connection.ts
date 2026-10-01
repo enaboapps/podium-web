@@ -117,6 +117,7 @@ function normalizeVoice(raw: unknown, azure: boolean): TTSVoice {
     gender:
       gender === "male" ? "Male" : gender === "female" ? "Female" : "Unknown",
     previewUrl: azure ? undefined : str(v.preview_url) || undefined,
+    ...(azure && { styles: Array.isArray(v.StyleList) ? v.StyleList.filter((s): s is string => typeof s === "string") : [] }),
     provider: azure ? "azure" : "elevenlabs",
     languageCodes: language
       ? [{ bcp47: language, iso639_3: language.split("-")[0], display }]
