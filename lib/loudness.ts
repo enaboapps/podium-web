@@ -127,7 +127,7 @@ export function isNormalisedAudio(blob: Blob) {
 }
 
 /** Decode to mono at the output rate. Browser only. */
-async function decodeToMono(blob: Blob): Promise<Float32Array> {
+export async function decodeToMono(blob: Blob): Promise<Float32Array> {
   const context = new OfflineAudioContext(1, 1, OUTPUT_SAMPLE_RATE);
   const decoded = await context.decodeAudioData(await blob.arrayBuffer());
   if (decoded.numberOfChannels === 1) return decoded.getChannelData(0);
