@@ -9,7 +9,9 @@ import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
 import { splitIntoSentences, joinFullText } from '@/lib/parseFile';
 import { invalidateTalkOfflineState } from '@/lib/offlineTalkMaintenance';
 import { getSegmentWords } from '@/lib/delivery';
-import { getTTSConfig } from '@/lib/tts';
+import { getTTSConfig, getVoiceKey } from '@/lib/tts';
+import { Download } from 'lucide-react';
+import { TalkDownloadSheet } from '@/components/TalkDownloadSheet';
 import { SegmentDeliveryEditor, SegmentDeliveryEditorHandle, SegmentDeliveryValue } from '@/components/segments/SegmentDeliveryEditor';
 import { UnsavedChangesBar } from '@/components/UnsavedChangesBar';
 import { SegmentBlockList } from '@/components/segments/SegmentBlockList';
@@ -70,6 +72,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const discardingRef = useRef(false);
   const segmentEditorRef = useRef<SegmentDeliveryEditorHandle>(null);
   const [brickSaving, setBrickSaving] = useState(false);
+  const [showDownload, setShowDownload] = useState(false);
 
   useEffect(() => {
     if (!talk) return;
@@ -90,6 +93,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   }, [paragraphs, mode]);
 
   const ttsConfig = useMemo(() => getTTSConfig(settings), [settings]);
+  const voiceKey = settings && ttsConfig ? getVoiceKey(settings) : undefined;
 
   // Unsaved means different from what's stored, so undoing an edit (or
   // re-tapping the current split mode) doesn't leave the page stuck unsaved.
@@ -103,6 +107,7 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     setBrickEditorDirty(false);
     setBrickClosePending(false);
+    setShowDownload(false);
   }, [brickSegmentId]);
 
   useEffect(() => {
@@ -344,7 +349,19 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           <header className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-[var(--border)] shrink-0">
             <button onClick={handleBrickClose} className="text-sm text-[var(--muted)]">← Back</button>
             <span className="text-sm font-semibold">Segment {brickSegmentIndex + 1}</span>
-            <div className="w-16" />
+            <div className="flex w-16 justify-end">
+              {voiceKey && (
+                <button
+                  onClick={() => setShowDownload(true)}
+                  disabled={brickEditorDirty}
+                  aria-label={brickEditorDirty ? 'Save changes to download as MP3' : 'Download as MP3'}
+                  title={brickEditorDirty ? 'Save changes to download' : undefined}
+                  className="-m-2 p-2 text-[var(--muted)] disabled:opacity-30"
+                >
+                  <Download className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
           </header>
         )}
         <SegmentDeliveryEditor
@@ -357,6 +374,17 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
           onDirtyChange={setBrickEditorDirty}
           onSave={handleBrickSave}
         />
+        {showDownload && (
+          <TalkDownloadSheet
+            talkId={id}
+            title={talk!.title ?? 'Untitled'}
+            segments={talk!.segments}
+            sectionIndex={brickSegmentIndex}
+            voiceKey={voiceKey}
+            ttsConfig={ttsConfig}
+            onClose={() => setShowDownload(false)}
+          />
+        )}
       </div>
     )}
     </>

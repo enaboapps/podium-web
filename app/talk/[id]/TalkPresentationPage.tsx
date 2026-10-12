@@ -9,22 +9,18 @@ import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { useOfflineBoot } from '@/hooks/useOfflineBoot';
 import { useOnlineCurrentUser } from '@/hooks/useOnlineCurrentUser';
-import { clearTalkAudio, getCachedAudio, getTalkData, saveTalkData, setCachedAudio, type CachedTalk } from '@/lib/audioStore';
+import { clearTalkAudio, getTalkData, saveTalkData, type CachedTalk } from '@/lib/audioStore';
 import { getTalkPreparedState, saveTalkPreparedState } from '@/lib/offlineStore';
 import { readTalkIndex, writeTalkIndex } from '@/lib/presentationState';
-import { getLoudnessOffsetDb, getSegmentAudioIdentity } from '@/lib/delivery';
-import { fetchSegmentBlob, getTTSConfig, getVoiceKey } from '@/lib/tts';
+import { getSegmentAudioIdentity } from '@/lib/delivery';
+import { generateSegmentAudio, getCachedSegmentAudio } from '@/lib/segmentAudio';
+import { getTTSConfig, getVoiceKey } from '@/lib/tts';
+import { TalkDownloadSheet } from '@/components/TalkDownloadSheet';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
 const EARLY_START_THRESHOLD = 0.25; // unlock talk UI once this fraction of segments are cached
 const OFFLINE_UNAVAILABLE_DELAY_MS = 2500;
-
-type TalkSegment = CachedTalk['segments'][number];
-
-function getSegmentAudioCacheKey(voiceKey: string, talkId: string, segment: TalkSegment) {
-  return `${voiceKey}:${talkId}:${getSegmentAudioIdentity(segment)}`;
-}
 
 export default function TalkPresentationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -39,6 +35,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
   const [index, setIndex] = useState<number>(() => readTalkIndex(id) ?? 0);
   const [speakState, setSpeakState] = useState<SpeakState>('idle');
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const [showDownload, setShowDownload] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrls = useRef<Map<number, string>>(new Map());
   const hasHydratedIndexRef = useRef(false);
@@ -147,10 +144,10 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
       }
 
       const idbResults = await Promise.all(
-        segments.map(async (segment, segmentIndex) => {
-          const cacheKey = getSegmentAudioCacheKey(activeVoiceKey, id, segment);
-          return { segmentIndex, segment, cacheKey, blob: await getCachedAudio(cacheKey, getLoudnessOffsetDb(segment)) };
-        })
+        segments.map(async (segment, segmentIndex) => ({
+          segmentIndex,
+          blob: await getCachedSegmentAudio(activeVoiceKey, id, segment),
+        }))
       );
 
       if (signal.aborted) return;
@@ -208,12 +205,9 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
         if (signal.aborted) break;
         if (audioUrls.current.has(segmentIndex)) continue;
 
-        const cacheKey = getSegmentAudioCacheKey(activeSettingsVoiceKey, id, segment);
-
         try {
-          const blob = await fetchSegmentBlob(segment, activeTtsConfig);
+          const blob = await generateSegmentAudio(activeSettingsVoiceKey, id, segment, activeTtsConfig);
           if (signal.aborted) break;
-          await setCachedAudio(cacheKey, blob);
           audioUrls.current.set(segmentIndex, URL.createObjectURL(blob));
           completed = audioUrls.current.size;
           setCacheLoaded(completed);
@@ -499,12 +493,23 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
         <span className="text-xs text-[var(--muted)]">
           {index + 1} / {segments.length}
         </span>
-        <a
-          href={current ? `/talk/${id}/edit?segment=${encodeURIComponent(current.id)}` : `/talk/${id}/edit`}
-          className={`text-xs w-12 text-right transition-colors ${isLocked ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}
-        >
-          Edit
-        </a>
+        <div className={`flex items-center gap-4 transition-colors ${isLocked ? 'pointer-events-none text-transparent' : 'text-[var(--muted)]'}`}>
+          {resolvedVoiceKey && (
+            <button
+              onClick={() => setShowDownload(true)}
+              aria-label="Download as MP3"
+              className="-m-2 p-2"
+            >
+              <Download className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          )}
+          <a
+            href={current ? `/talk/${id}/edit?segment=${encodeURIComponent(current.id)}` : `/talk/${id}/edit`}
+            className="text-xs"
+          >
+            Edit
+          </a>
+        </div>
       </header>
 
       {offlinePresentation && (
@@ -653,6 +658,18 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
         <div className="flex justify-center pb-6 -mt-4">
           <a href="/library" className="text-sm text-[var(--primary)] font-medium">Back to library</a>
         </div>
+      )}
+
+      {showDownload && (
+        <TalkDownloadSheet
+          talkId={id}
+          title={effectiveTalk.title}
+          segments={segments}
+          sectionIndex={index}
+          voiceKey={resolvedVoiceKey}
+          ttsConfig={isOnline && settingsVoiceKey === resolvedVoiceKey ? ttsConfig : null}
+          onClose={() => setShowDownload(false)}
+        />
       )}
 
       {showRestartConfirm && (
