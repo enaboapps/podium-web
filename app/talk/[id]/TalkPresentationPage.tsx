@@ -384,7 +384,15 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
   if (segments.length === 0) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--background)]">
-        <p className="text-[var(--muted)] text-sm">No segments in this talk.</p>
+        <p className="text-[var(--muted)] text-sm">This talk has no text yet.</p>
+        {isOnline ? (
+          <a
+            href={`/talk/${id}/edit`}
+            className="min-h-11 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white"
+          >
+            Write your talk
+          </a>
+        ) : null}
         <a href="/library" className="text-[var(--primary)] text-sm">Back to library</a>
       </div>
     );
