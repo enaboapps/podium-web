@@ -60,13 +60,15 @@ export const saveEditedText = mutation({
     const talk = await ctx.db.get(id);
     if (!talk || talk.userId !== userId) throw new Error('Not found');
 
-    // Save current state as a version
-    await ctx.db.insert('talkVersions', {
-      talkId: id,
-      fullText: talk.fullText,
-      segmentMode: talk.segmentMode,
-      segments: talk.segments,
-    });
+    // Save current state as a version, unless the talk is still empty (just created)
+    if (talk.segments.length > 0 || talk.fullText) {
+      await ctx.db.insert('talkVersions', {
+        talkId: id,
+        fullText: talk.fullText,
+        segmentMode: talk.segmentMode,
+        segments: talk.segments,
+      });
+    }
 
     // Update talk with new text, segments, and mode
     await ctx.db.patch(id, { fullText, segments, segmentMode });

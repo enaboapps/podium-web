@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
+import { useRouter } from 'next/navigation';
 import { AssignTalkSheet } from '@/components/library/AssignTalkSheet';
 import { ImportTalkSheet } from '@/components/library/ImportTalkSheet';
 import { LibraryFab } from '@/components/library/LibraryFab';
@@ -25,6 +26,7 @@ import { CachedTalkStatus, getTalkPreparedState } from '@/lib/offlineStore';
 import OfflineLibraryPage from './OfflineLibraryPage';
 
 export default function OnlineLibraryPage() {
+  const router = useRouter();
   const { clerkId } = useOnlineCurrentUser();
   const { library, refreshOfflineBootstrap } = useOfflineBoot();
   const [tab, setTab] = useState<LibraryTab>('talks');
@@ -193,9 +195,11 @@ export default function OnlineLibraryPage() {
     event.preventDefault();
     if (!clerkId || !newTalkTitle.trim()) return;
 
-    await createTalk({ userId: clerkId, title: newTalkTitle.trim() });
+    const talkId = await createTalk({ userId: clerkId, title: newTalkTitle.trim() });
     setNewTalkTitle('');
     setCreateMode('none');
+    // A new talk has no text yet, so go straight to writing it.
+    router.push(`/talk/${talkId}/edit`);
   }
 
   async function handleCreateSet(event: React.FormEvent) {

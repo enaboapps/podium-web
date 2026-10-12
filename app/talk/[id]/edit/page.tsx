@@ -81,6 +81,12 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
     if (talk.segmentMode) setMode(talk.segmentMode);
   }, [talk]);
 
+  // A talk with no text yet (just created) opens on the text editor.
+  const talkIsEmpty = !!talk && talk.segments.length === 0 && !talk.fullText;
+  useEffect(() => {
+    if (talkIsEmpty) setView('text');
+  }, [talkIsEmpty]);
+
   const paragraphs = useMemo(() => {
     return fullText
       .split(/\n{2,}/)
