@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useMp3Export } from '@/hooks/useMp3Export';
 import { DeliverySegment } from '@/lib/delivery';
-import { saveFile } from '@/lib/saveFile';
+import { saveFile, savesViaShareSheet } from '@/lib/saveFile';
 import { TTSConfig } from '@/lib/tts';
 
 interface TalkDownloadSheetProps {
@@ -127,7 +127,7 @@ export function TalkDownloadSheet({
             </p>
             <button onClick={() => void saveFile(state.file)} className={primaryButton}>
               <Download className="h-5 w-5" aria-hidden />
-              Save MP3
+              {savesViaShareSheet() ? 'Save to Files' : 'Download MP3'}
             </button>
             <button onClick={close} className={secondaryButton}>
               Done
