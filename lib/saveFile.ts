@@ -1,17 +1,20 @@
 /**
- * Hand a file to the user. On touch devices, the share sheet is the reliable
- * way to save from an installed PWA (iOS ignores `download` links there);
- * elsewhere, a normal download. Call from a tap: sharing needs a user gesture.
+ * Whether saving has to go through the share sheet: the installed iOS app
+ * ignores `download` links, and "Save to Files" there is the only way to keep
+ * a file. Everywhere else a normal download works.
  */
-export async function saveFile(file: File): Promise<void> {
-  const prefersShare =
-    typeof navigator.canShare === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches &&
-    navigator.canShare({ files: [file] });
+export function savesViaShareSheet(): boolean {
+  return (
+    (navigator as Navigator & { standalone?: boolean }).standalone === true &&
+    typeof navigator.canShare === 'function'
+  );
+}
 
-  if (prefersShare) {
+/** Hand a file to the user. Call from a tap: sharing needs a user gesture. */
+export async function saveFile(file: File): Promise<void> {
+  if (savesViaShareSheet() && navigator.canShare({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: file.name });
+      await navigator.share({ files: [file] });
       return;
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
