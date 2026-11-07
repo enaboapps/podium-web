@@ -1,6 +1,22 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { deliveryWordValidator, moodValidator, paceValidator, segmentValidator } from './schema';
+import { deliveryWordValidator, moodValidator, paceValidator, segmentValidator, slideValidator } from './schema';
+import { assignSlide } from '../lib/slides';
+
+export const saveSectionSlide = mutation({
+  args: { id: v.id('talks'), segmentId: v.string(), slide: v.union(slideValidator, v.null()) },
+  handler: async (ctx, { id, segmentId, slide }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const talk = await ctx.db.get(id);
+    if (!identity || !talk || talk.userId !== identity.subject) throw new Error('Not found');
+    const segments = assignSlide(talk.segments, segmentId, slide);
+    await ctx.db.insert('talkVersions', {
+      talkId: id, fullText: talk.fullText, segmentMode: talk.segmentMode, segments: talk.segments,
+    });
+    await ctx.db.patch(id, { segments });
+    return segments;
+  },
+});
 
 export const get = query({
   args: { id: v.id('talks') },

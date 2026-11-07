@@ -16,6 +16,7 @@ import { getSegmentAudioIdentity } from '@/lib/delivery';
 import { generateSegmentAudio, getCachedSegmentAudio } from '@/lib/segmentAudio';
 import { getTTSConfig, getVoiceKey } from '@/lib/tts';
 import { TalkDownloadSheet } from '@/components/TalkDownloadSheet';
+import { AudienceDisplay } from '@/components/AudienceDisplay';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -561,6 +562,8 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
           </motion.div>
         )}
       </AnimatePresence>
+
+      {segments.some((segment) => segment.slide) && <AudienceDisplay slide={current.slide} offline={offlinePresentation} />}
 
       {/* Segment text */}
       <div className="flex-1 min-h-0 overflow-y-auto">

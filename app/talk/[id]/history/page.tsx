@@ -116,6 +116,7 @@ function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
             {expandedId === 'current' && (
               <div className="border-t border-[var(--border)] px-4 py-3 max-h-64 overflow-y-auto">
                 <p className="text-sm text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">{currentText}</p>
+                <SlideHistory segments={talk!.segments} />
               </div>
             )}
           </div>
@@ -186,6 +187,7 @@ function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
                   </div>
 
                   {/* Restore */}
+                  <div className="px-4 pb-3"><SlideHistory segments={v.segments} /></div>
                   <div className="px-4 py-3 border-t border-[var(--border)]">
                     <button
                       onClick={() => handleRestore(v._id as Id<'talkVersions'>)}
@@ -203,6 +205,18 @@ function OnlineHistoryPage({ params }: { params: Promise<{ id: string }> }) {
       </main>
     </div>
   );
+}
+
+function SlideHistory({ segments }: { segments: { id: string; slide?: { title: string; body?: string; mediaType?: string; mediaUrl?: string } }[] }) {
+  const hasSlides = segments.some((segment) => segment.slide);
+  return <div className="mt-3 text-xs text-[var(--muted)]">
+    <p className="font-semibold">{hasSlides ? 'Slides in this version' : 'No slides in this version'}</p>
+    {hasSlides && <ul className="mt-2 space-y-2">{segments.map((segment, index) => <li key={segment.id}>
+      Section {index + 1}: {segment.slide?.title ?? 'No slide'}
+      {segment.slide?.body && <p className="whitespace-pre-wrap">{segment.slide.body}</p>}
+      {segment.slide?.mediaUrl && <p className="break-all">{segment.slide.mediaType}: {segment.slide.mediaUrl}</p>}
+    </li>)}</ul>}
+  </div>;
 }
 
 function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
