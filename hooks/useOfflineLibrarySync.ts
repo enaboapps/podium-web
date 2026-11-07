@@ -70,6 +70,8 @@ export function useOfflineLibrarySync({
     };
   }, []);
 
+  // This stable callback reads the latest payload from a ref and can rerun itself.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const runSync = useCallback(async () => {
     const current = latestPayloadRef.current;
     if (!current) return;
@@ -112,6 +114,8 @@ export function useOfflineLibrarySync({
   useEffect(() => {
     latestPayloadRef.current = payload;
     if (!payload) {
+      // Removing the payload clears the previous sync session immediately.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSyncState('idle');
       return;
     }
