@@ -67,6 +67,6 @@ export function SpeechVideo({ embedUrl, title, speechState, compact }: {
   return <>
     {apiFailed ? <iframe title={title} src={embedUrl} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen style={{ width: '100%', flex: 1, minHeight: compact ? 180 : 200, border: 0 }} /> :
       <div ref={hostRef} aria-label={title} style={{ width: '100%', flex: 1, minHeight: compact ? 180 : 200 }} />}
-    <p role="status" style={{ margin: 0, fontSize: 14 }}>{notice || 'Video plays after this section\'s speech.'}</p>
+    {notice && <p role="status" style={{ margin: 0, fontSize: 14 }}>{notice}</p>}
   </>;
 }
