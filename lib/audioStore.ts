@@ -1,8 +1,9 @@
 import { createStore, del, get, keys, set } from 'idb-keyval';
 import { DeliverySegment, getSegmentAudioIdentity } from '@/lib/delivery';
 import { isNormalisedAudio, normaliseSpeechBlob } from '@/lib/loudness';
+import type { Slide } from '@/lib/slides';
 
-export type CachedSegment = DeliverySegment & { id: string };
+export type CachedSegment = DeliverySegment & { id: string; slide?: Slide };
 
 /**
  * Cached speech, normalised for loudness. Audio cached before normalisation is

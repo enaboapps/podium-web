@@ -34,9 +34,18 @@ export const deliveryWordValidator = v.object({
   pause: v.optional(v.union(v.literal('short'), v.literal('medium'), v.literal('long'))),
 });
 
+export const slideValidator = v.object({
+  id: v.string(),
+  title: v.string(),
+  body: v.optional(v.string()),
+  mediaType: v.optional(v.union(v.literal('image'), v.literal('youtube'))),
+  mediaUrl: v.optional(v.string()),
+});
+
 export const segmentValidator = v.object({
   id: v.string(),
   text: v.string(),
+  slide: v.optional(slideValidator),
   /** Unused */
   tempo: v.optional(v.number()),
   /** Unused */
