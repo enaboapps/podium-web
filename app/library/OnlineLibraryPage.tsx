@@ -65,6 +65,8 @@ export default function OnlineLibraryPage() {
 
   useEffect(() => {
     if (talks !== undefined && sets !== undefined) {
+      // Reset the emergency fallback when live Convex queries recover.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForceOfflineFallback(false);
       return;
     }
@@ -80,6 +82,8 @@ export default function OnlineLibraryPage() {
 
   useEffect(() => {
     if (!clerkId || !talks) {
+      // Hide the previous account's prepared status immediately.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatusesReady(false);
       return;
     }

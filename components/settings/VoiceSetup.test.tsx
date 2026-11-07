@@ -96,7 +96,7 @@ it("first-time setup validates once, activates, and focuses the voice screen", a
   ).toBe(false);
   await user.type(screen.getByLabelText("Secret API key"), " new-key ");
   await user.click(
-    screen.getByRole("button", { name: "Connect", exact: true }),
+    screen.getByRole("button", { name: "Connect" }),
   );
   await screen.findByRole("combobox", { name: "Voice" });
   expect(p.onConnect).toHaveBeenCalledWith({
@@ -117,7 +117,7 @@ it("changing service uses the saved key, validates once and reuses the voices", 
   expect(p.onConnect).not.toHaveBeenCalled();
   expect(screen.queryByLabelText("Speech resource key")).toBeNull();
   await user.click(
-    screen.getByRole("button", { name: "Connect", exact: true }),
+    screen.getByRole("button", { name: "Connect" }),
   );
   await screen.findByRole("heading", { name: "Using Azure" });
   expect(p.onConnect).toHaveBeenCalledWith(az);
@@ -141,7 +141,7 @@ it("failed save/activation stays in setup and preserves the old service", async 
   await screen.findByRole("combobox", { name: "Voice" });
   await changeService(user);
   await user.click(
-    screen.getByRole("button", { name: "Connect", exact: true }),
+    screen.getByRole("button", { name: "Connect" }),
   );
   expect((await screen.findByRole("alert")).textContent).toContain(
     "previous setup is unchanged",
@@ -193,7 +193,7 @@ it.each(["cancel", "edit"])(
     );
     await user.type(screen.getByLabelText("Secret API key"), "replacement");
     await user.click(
-      screen.getByRole("button", { name: "Connect", exact: true }),
+      screen.getByRole("button", { name: "Connect" }),
     );
     if (action === "cancel")
       await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -216,7 +216,7 @@ it("failed replacement preserves the existing key and draft", async () => {
   });
   await user.type(screen.getByLabelText("Secret API key"), "bad");
   await user.click(
-    screen.getByRole("button", { name: "Connect", exact: true }),
+    screen.getByRole("button", { name: "Connect" }),
   );
   await screen.findByRole("alert");
   expect(p.onConnect).not.toHaveBeenCalled();
@@ -258,7 +258,7 @@ it("prevents cancel and duplicate connects during the atomic save", async () => 
   await screen.findByRole("combobox", { name: "Voice" });
   await changeService(user);
   await user.click(
-    screen.getByRole("button", { name: "Connect", exact: true }),
+    screen.getByRole("button", { name: "Connect" }),
   );
   await screen.findByRole("button", { name: "Saving…" });
   expect(

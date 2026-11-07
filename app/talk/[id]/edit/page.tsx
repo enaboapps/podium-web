@@ -77,6 +77,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     if (!talk) return;
     const text = talk.fullText ?? talk.segments.map((s) => s.text).join('\n\n');
+    // Hydrate the editable draft when the stored talk changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFullText(text);
     if (talk.segmentMode) setMode(talk.segmentMode);
   }, [talk]);
@@ -84,6 +86,8 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   // A talk with no text yet (just created) opens on the text editor.
   const talkIsEmpty = !!talk && talk.segments.length === 0 && !talk.fullText;
   useEffect(() => {
+    // A new empty talk starts in its text editor.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (talkIsEmpty) setView('text');
   }, [talkIsEmpty]);
 
@@ -111,12 +115,16 @@ function OnlineEditPage({ params }: { params: Promise<{ id: string }> }) {
   const brickSegmentIndex = brickSegment ? talk!.segments.indexOf(brickSegment) : -1;
 
   useEffect(() => {
+    // Changing the selected segment resets the previous editor session.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBrickEditorDirty(false);
     setBrickClosePending(false);
     setShowDownload(false);
   }, [brickSegmentId]);
 
   useEffect(() => {
+    // Read the segment deep link after the browser location is available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlightSegmentId(new URLSearchParams(window.location.search).get('segment'));
   }, []);
 

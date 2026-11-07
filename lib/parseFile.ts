@@ -51,9 +51,10 @@ async function parseDocx(file: File): Promise<string[]> {
 // --- PDF ---
 
 async function parsePdf(file: File): Promise<string[]> {
-  const pdfjsLib = await import('pdfjs-dist');
+  // The legacy build retains polyfills needed by older presentation devices.
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.mjs',
+    'pdfjs-dist/legacy/build/pdf.worker.mjs',
     import.meta.url
   ).toString();
 
