@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { safeImageUrl, youtubeEmbedUrl, type Slide } from '@/lib/slides';
+import { SpeechVideo, type VideoSpeechState } from '@/components/SpeechVideo';
 
-export function SlideView({ slide, compact = false }: { slide?: Slide; compact?: boolean }) {
+export function SlideView({ slide, compact = false, speechState }: { slide?: Slide; compact?: boolean; speechState?: VideoSpeechState }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const image = slide?.mediaType === 'image' ? safeImageUrl(slide.mediaUrl ?? '') : null;
   const video = slide?.mediaType === 'youtube' ? youtubeEmbedUrl(slide.mediaUrl ?? '') : null;
@@ -15,7 +16,8 @@ export function SlideView({ slide, compact = false }: { slide?: Slide; compact?:
         // Linked images must load directly, including hosts not known at build time.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image} alt={slide.title} referrerPolicy="no-referrer" onError={() => setFailedUrl(image)} style={{ minHeight: 0, maxHeight: '70%', maxWidth: '100%', objectFit: 'contain' }} />)}
-      {video && <iframe title={slide.title} src={video} referrerPolicy="strict-origin-when-cross-origin" allow="encrypted-media; fullscreen; picture-in-picture" allowFullScreen style={{ width: '100%', flex: 1, minHeight: compact ? 180 : 200, border: 0 }} />}
+      {video && (speechState ? <SpeechVideo embedUrl={video} title={slide.title} speechState={speechState} compact={compact} /> :
+        <iframe title={slide.title} src={video} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen style={{ width: '100%', flex: 1, minHeight: compact ? 180 : 200, border: 0 }} />)}
     </> : <span aria-label="No slide for this section" />}
   </article>;
 }

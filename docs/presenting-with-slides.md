@@ -8,7 +8,9 @@ Return to the talk to see the slide directly above the section's script. YouTube
 
 For a projector or external display, you can also choose **Open audience window**. Move that window onto the display, then choose **Toggle full screen**. It shows only the slide. Your script and speech controls stay in the original window. A section without a slide shows a blank audience screen.
 
-YouTube videos play manually using the embedded controls on the main presentation screen or in the optional audience window. The two players work independently. Moving between sections sharing the same slide keeps each video player open. Moving to another slide stops it. Some videos cannot be embedded because their owners restrict playback. Linked images and videos need internet access and are not downloaded with the speech audio.
+On the main presentation screen, the embedded YouTube video starts when that section's speech finishes. Starting speech pauses the video first. You can also use the video's own Play button. If your browser blocks automatic playback, Podium shows a reminder to press Play.
+
+The optional audience window has its own manual video controls. The two players work independently. Moving between sections sharing the same slide keeps each video player open. After the next section's speech, the main player resumes from its current position. Moving to another slide stops it. Some videos cannot be embedded because their owners restrict playback. Linked images and videos need internet access and are not downloaded with the speech audio.
 
 Existing talks need no changes. Slides do not alter speech text, delivery presets, or cached audio. Saving a slide creates a version in History. Restoring a version restores its slides too, including versions from before slides were added. Unchanged sections retain their slides after text editing. Rewritten sections and changed paragraph or sentence splits need their slides assigned again.
 
@@ -23,3 +25,5 @@ The audience window uses `/audience.html` so embedded YouTube requests include P
 Deploy the updated Convex schema and functions together with the frontend. No migration is needed for existing talks.
 
 YouTube embeds follow the [official player documentation](https://developers.google.com/youtube/player_parameters). Podium extracts a video ID from supported YouTube links and creates a fixed embed URL. It does not embed arbitrary supplied URLs or HTML.
+
+The main player uses the [official IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) to pause during speech and play after the audio's ended event. Automatic playback is subject to the browser's autoplay policy.

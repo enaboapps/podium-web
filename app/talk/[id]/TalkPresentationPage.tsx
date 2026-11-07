@@ -571,7 +571,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
         <div className={current.slide ? 'min-h-full flex flex-col items-center justify-center gap-6 px-5 py-6' : 'min-h-full flex items-center justify-center px-8 py-8'}>
         {current.slide && (
           <div className="w-full max-w-4xl shrink-0 overflow-hidden rounded-2xl border border-[var(--border)]" style={{ height: 'clamp(280px, 40vh, 480px)' }}>
-            <SlideView key={current.slide.id} slide={current.slide} compact />
+            <SlideView key={current.slide.id} slide={current.slide} speechState={speakState} compact />
           </div>
         )}
         <motion.div
