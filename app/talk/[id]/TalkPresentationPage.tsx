@@ -17,6 +17,7 @@ import { generateSegmentAudio, getCachedSegmentAudio } from '@/lib/segmentAudio'
 import { getTTSConfig, getVoiceKey } from '@/lib/tts';
 import { TalkDownloadSheet } from '@/components/TalkDownloadSheet';
 import { AudienceDisplay } from '@/components/AudienceDisplay';
+import { SlideView } from '@/components/SlideView';
 
 type SpeakState = 'idle' | 'loading' | 'speaking' | 'spoken';
 
@@ -567,7 +568,12 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
 
       {/* Segment text */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="min-h-full flex items-center justify-center px-8 py-8">
+        <div className={current.slide ? 'min-h-full flex flex-col items-center justify-center gap-6 px-5 py-6' : 'min-h-full flex items-center justify-center px-8 py-8'}>
+        {current.slide && (
+          <div className="w-full max-w-4xl shrink-0 overflow-hidden rounded-2xl border border-[var(--border)]" style={{ height: 'clamp(280px, 40vh, 480px)' }}>
+            <SlideView key={current.slide.id} slide={current.slide} compact />
+          </div>
+        )}
         <motion.div
           key={index}
           initial={{ opacity: 0, y: 8 }}
