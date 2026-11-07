@@ -574,7 +574,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
             <SlideView key={current.slide.id} slide={current.slide} speechState={speakState} compact />
           </div>
         )}
-        <motion.div
+        {current.slide?.mediaType !== 'youtube' && <motion.div
           key={index}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -586,7 +586,7 @@ export default function TalkPresentationPage({ params }: { params: Promise<{ id:
           <p className="text-3xl leading-snug font-semibold text-center text-[var(--foreground)]" style={{ fontFamily: 'var(--font-display)' }}>
             {current.text}
           </p>
-        </motion.div>
+        </motion.div>}
         </div>
       </div>
 

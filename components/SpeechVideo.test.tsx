@@ -73,7 +73,7 @@ it('provides a manual-play hint if the browser blocks autoplay and clears it on 
   act(() => options!.events.onAutoplayBlocked());
   expect(screen.getByRole('status').textContent).toContain('Press Play');
   act(() => options!.events.onStateChange({ data: 1 }));
-  expect(screen.getByRole('status').textContent).not.toContain('Press Play');
+  expect(screen.queryByRole('status')).toBeNull();
 });
 
 it('destroys the video when leaving its slide and ignores late player callbacks', async () => {
