@@ -16,6 +16,8 @@ The optional `slide` field lives on each segment, so existing version snapshots 
 
 Slide-only saves replace the cached document without invalidating audio or its prepared status. Audio identity excludes slide content. Remote media is loaded only in the editor preview or audience window.
 
+The audience window uses `/audience.html` so embedded YouTube requests include Podium's origin. An `about:blank` document causes YouTube Error 153. The presenter accepts the ready message only from its own audience window and the same origin. The service worker precaches the empty audience shell for offline text slides.
+
 Deploy the updated Convex schema and functions together with the frontend. No migration is needed for existing talks.
 
 YouTube embeds follow the [official player documentation](https://developers.google.com/youtube/player_parameters). Podium extracts a video ID from supported YouTube links and creates a fixed embed URL. It does not embed arbitrary supplied URLs or HTML.

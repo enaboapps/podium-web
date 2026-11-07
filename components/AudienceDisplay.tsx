@@ -9,20 +9,28 @@ export function AudienceDisplay({ slide, offline }: { slide?: Slide; offline: bo
   const popupRef = useRef<Window | null>(null);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [error, setError] = useState('');
-  useEffect(() => () => { popupRef.current?.close(); }, []);
+  useEffect(() => {
+    function ready(event: MessageEvent) {
+      const popup = popupRef.current;
+      if (!popup || event.source !== popup || event.origin !== window.location.origin || event.data !== 'podium-audience-ready') return;
+      const root = popup.document.getElementById('audience-root');
+      if (!root) return;
+      popup.addEventListener('pagehide', () => setTarget(null), { once: true });
+      setTarget(root);
+    }
+    window.addEventListener('message', ready);
+    return () => {
+      window.removeEventListener('message', ready);
+      popupRef.current?.close();
+    };
+  }, []);
 
   function open() {
     if (popupRef.current && !popupRef.current.closed) { popupRef.current.focus(); return; }
-    const popup = window.open('', '_blank', 'popup,width=1280,height=720');
+    // A real same-origin URL supplies the HTTP Referer required by YouTube.
+    const popup = window.open('/audience.html', '_blank', 'popup,width=1280,height=720');
     if (!popup) { setError('Allow pop-ups for Podium to open the audience window.'); return; }
     popupRef.current = popup;
-    popup.document.title = 'Podium audience display';
-    popup.document.body.style.cssText = 'margin:0;background:#09090b;color:white;height:100vh;overflow:hidden';
-    const root = popup.document.createElement('div');
-    root.style.cssText = 'height:100%;display:flex;flex-direction:column';
-    popup.document.body.append(root);
-    popup.addEventListener('pagehide', () => setTarget(null), { once: true });
-    setTarget(root);
     setError('');
   }
 

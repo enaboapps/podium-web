@@ -4,6 +4,7 @@ const OFFLINE_URL = '/offline.html';
 const CLERK_HOST = 'clerk.podiumspeak.xyz';
 const PRECACHE_URLS = [
   OFFLINE_URL,
+  '/audience.html',
   '/manifest.json',
   '/favicon.ico',
   '/icons/apple-touch-icon.png',

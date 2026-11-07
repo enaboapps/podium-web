@@ -13,12 +13,22 @@ it('explains blocked audience popups without disrupting the presenter', () => {
 
 it('synchronizes slides, preserves a shared video player, and closes the audience window on exit', () => {
   const doc = document.implementation.createHTMLDocument();
+  const root = doc.createElement('div');
+  root.id = 'audience-root';
+  doc.body.append(root);
   const close = vi.fn();
   const listeners = new Map<string, () => void>();
-  vi.spyOn(window, 'open').mockReturnValue({ document: doc, close, closed: false, addEventListener: (event: string, fn: () => void) => listeners.set(event, fn) } as unknown as Window);
+  const popup = { document: doc, close, closed: false, addEventListener: (event: string, fn: () => void) => listeners.set(event, fn) } as unknown as Window;
+  const open = vi.spyOn(window, 'open').mockReturnValue(popup);
   const slide = { id: 'shared', title: 'Video', mediaType: 'youtube' as const, mediaUrl: 'https://youtu.be/dQw4w9WgXcQ' };
   const { rerender, unmount } = render(<AudienceDisplay offline={false} slide={slide} />);
   fireEvent.click(screen.getByRole('button', { name: 'Open audience window' }));
+  expect(open).toHaveBeenCalledWith('/audience.html', '_blank', expect.any(String));
+  act(() => window.dispatchEvent(new MessageEvent('message', { data: 'podium-audience-ready', source: popup, origin: 'https://untrusted.test' })));
+  expect(doc.querySelector('iframe')).toBeNull();
+  act(() => window.dispatchEvent(new MessageEvent('message', { data: 'podium-audience-ready', source: window, origin: window.location.origin })));
+  expect(doc.querySelector('iframe')).toBeNull();
+  act(() => window.dispatchEvent(new MessageEvent('message', { data: 'podium-audience-ready', source: popup, origin: window.location.origin })));
   const iframe = doc.querySelector('iframe');
   expect(iframe).not.toBeNull();
   expect(doc.body.textContent).not.toContain('private script');
